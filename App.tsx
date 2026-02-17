@@ -1,0 +1,891 @@
+
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { 
+  Coins, Briefcase, TrendingUp, Bitcoin, Home, Zap, 
+  ArrowUpRight, ArrowDownRight, Smartphone, LayoutDashboard, 
+  RefreshCcw, Trash2, CloudLightning, Loader2, ChevronRight, 
+  ArrowLeft, Building2, PieChart as PieIcon, LineChart as LineIcon, 
+  Globe, ShieldAlert, BarChart3, TrendingDown, Layers,
+  Trophy, Wallet, Percent, Tag, Play, Pause, Save, DollarSign, Activity,
+  Info, Maximize2, ArrowUpCircle, Sparkles, ShoppingBag, Package,
+  LogOut, User, Lock, ArrowRightCircle
+} from 'lucide-react';
+import { 
+  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
+  AreaChart, Area, PieChart, Pie, Cell, Legend
+} from 'recharts';
+
+import { 
+  INITIAL_BUSINESSES, INITIAL_STOCKS, INITIAL_CRYPTO, INITIAL_LIFESTYLE 
+} from './constants';
+import { 
+  Business, Asset, LifestyleItem, PlayerState, GameTab, 
+  IndustryCategory, OwnedBusiness, EconomicCycle, OwnedLifestyle 
+} from './types';
+import { 
+  formatCurrency, formatFullCurrency, calculateNextPrice, calculateIncome 
+} from './utils/format';
+
+const FB_URL = "https://mysql-ccf25-default-rtdb.asia-southeast1.firebasedatabase.app/";
+const SESSION_KEY = 'money_empire_active_user';
+
+const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316', '#6366f1', '#14b8a6', '#facc15', '#64748b'];
+
+interface Particle {
+  id: number;
+  x: number;
+  y: number;
+  value: string;
+}
+
+const App: React.FC = () => {
+  const [activeUser, setActiveUser] = useState<string | null>(localStorage.getItem(SESSION_KEY));
+  const [loginInput, setLoginInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [activeTab, setActiveTab] = useState<GameTab>(GameTab.DASHBOARD);
+  const [selectedIndustry, setSelectedIndustry] = useState<IndustryCategory | null>(null);
+  const [particles, setParticles] = useState<Particle[]>([]);
+  const [tradeQuantities, setTradeQuantities] = useState<Record<string, string>>({});
+
+  const defaultState: PlayerState = {
+    money: 100,
+    totalEarned: 0,
+    xp: 0,
+    level: 1,
+    clickPower: 1,
+    clickLevel: 1,
+    ownedBusinesses: [],
+    assets: [...INITIAL_STOCKS, ...INITIAL_CRYPTO],
+    inventory: [],
+    economicCycle: 'Normal',
+    lastSave: Date.now(),
+    isPaused: false
+  };
+
+  const [state, setState] = useState<PlayerState>(defaultState);
+
+  const loadProgress = async (username: string) => {
+    setLoading(true);
+    try {
+      const response = await fetch(`${FB_URL}players/${username.toLowerCase()}.json`);
+      const data = await response.json();
+      if (data) {
+        setState({
+          ...defaultState,
+          ...data,
+          username,
+          assets: [...INITIAL_STOCKS, ...INITIAL_CRYPTO].map(a => {
+            const saved = data.assets?.find((s: any) => s.id === a.id);
+            return saved ? { ...a, owned: saved.owned || 0, avgBuyPrice: saved.avgBuyPrice || 0, history: saved.history || a.history, price: saved.price || a.price } : a;
+          }),
+          inventory: data.inventory || []
+        });
+      } else {
+        setState({ ...defaultState, username });
+      }
+      setActiveUser(username);
+      localStorage.setItem(SESSION_KEY, username);
+    } catch (e) {
+      console.error("Failed to load progress", e);
+      alert("Error connecting to server. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!loginInput.trim()) return;
+    loadProgress(loginInput.trim());
+  };
+
+  const handleLogout = async () => {
+    setSyncing(true);
+    await saveToCloud(state);
+    setActiveUser(null);
+    localStorage.removeItem(SESSION_KEY);
+    setState(defaultState);
+    setSyncing(false);
+  };
+
+  useEffect(() => {
+    if (activeUser && !state.username) {
+      loadProgress(activeUser);
+    }
+  }, []);
+
+  const saveToCloud = async (overrideState?: PlayerState) => {
+    if (!activeUser) return;
+    setSyncing(true);
+    const stateToSave = overrideState || state;
+    try {
+      await fetch(`${FB_URL}players/${activeUser.toLowerCase()}.json`, {
+        method: 'PUT',
+        body: JSON.stringify({ ...stateToSave, lastSave: Date.now() })
+      });
+    } catch (e) {
+      console.error("Failed to save to cloud", e);
+    } finally {
+      setTimeout(() => setSyncing(false), 500);
+    }
+  };
+
+  const synergyBonus = useMemo(() => {
+    let bonus = 1;
+    const categories = new Set(state.ownedBusinesses.map(ob => INITIAL_BUSINESSES.find(b => b.id === ob.id)?.category));
+    if (categories.has('Retail') && categories.has('Shipping')) bonus += 0.1;
+    if (categories.has('Finance') && categories.has('Property')) bonus += 0.15;
+    if (categories.has('Airline') && categories.has('Hotels')) bonus += 0.2;
+    if (categories.has('IT') && categories.has('Medicine')) bonus += 0.25;
+    return bonus;
+  }, [state.ownedBusinesses]);
+
+  const cycleMultiplier = useMemo(() => {
+    switch (state.economicCycle) {
+      case 'Boom': return 1.5;
+      case 'Recession': return 0.6;
+      case 'Recovery': return 1.1;
+      default: return 1.0;
+    }
+  }, [state.economicCycle]);
+
+  const lifestyleMultiplier = useMemo(() => {
+    return state.inventory.reduce((acc, ol) => {
+      const item = INITIAL_LIFESTYLE.find(i => i.id === ol.id);
+      if (!item) return acc;
+      return acc + (item.multiplier - 1) * ol.count;
+    }, 1);
+  }, [state.inventory]);
+
+  const globalMultiplier = lifestyleMultiplier * synergyBonus * cycleMultiplier;
+
+  const businessesIncome = state.ownedBusinesses.reduce((acc, ob) => {
+    const bus = INITIAL_BUSINESSES.find(b => b.id === ob.id);
+    if (!bus) return acc;
+    return acc + calculateIncome(bus.baseIncome, ob.count, ob.level);
+  }, 0) * globalMultiplier;
+
+  const maintenance = state.ownedBusinesses.reduce((acc, ob) => {
+    const bus = INITIAL_BUSINESSES.find(b => b.id === ob.id);
+    if (!bus) return acc;
+    return acc + (bus.maintenance * ob.count);
+  }, 0);
+
+  const netIncome = Math.max(0, businessesIncome - maintenance);
+  const businessValue = state.ownedBusinesses.reduce((acc, ob) => {
+    const bus = INITIAL_BUSINESSES.find(b => b.id === ob.id);
+    if (!bus) return acc;
+    return acc + (bus.basePrice * ob.count);
+  }, 0);
+
+  const stockValue = state.assets.reduce((acc, a) => a.type === 'stock' ? acc + (a.owned * a.price) : acc, 0);
+  const cryptoValue = state.assets.reduce((acc, a) => a.type === 'crypto' ? acc + (a.owned * a.price) : acc, 0);
+  const inventoryValue = state.inventory.reduce((acc, ol) => {
+    const item = INITIAL_LIFESTYLE.find(i => i.id === ol.id);
+    return acc + (item ? item.price * ol.count : 0);
+  }, 0);
+
+  const totalNetWorth = state.money + businessValue + stockValue + cryptoValue + inventoryValue;
+
+  const industryStats = useMemo(() => {
+    const categories: IndustryCategory[] = ['Retail', 'Restaurants', 'Media', 'Shipping', 'Sport', 'Hotels', 'Property', 'IT', 'Medicine', 'Resources', 'Finance', 'Airline'];
+    return categories.map(cat => {
+      const ownedInCat = state.ownedBusinesses.filter(ob => INITIAL_BUSINESSES.find(b => b.id === ob.id)?.category === cat);
+      const income = ownedInCat.reduce((acc, ob) => {
+        const bus = INITIAL_BUSINESSES.find(b => b.id === ob.id);
+        return acc + (bus ? calculateIncome(bus.baseIncome, ob.count, ob.level) : 0);
+      }, 0) * globalMultiplier;
+      const count = ownedInCat.reduce((acc, ob) => acc + ob.count, 0);
+      const value = ownedInCat.reduce((acc, ob) => {
+        const bus = INITIAL_BUSINESSES.find(b => b.id === ob.id);
+        return acc + (bus ? bus.basePrice * ob.count : 0);
+      }, 0);
+      return { name: cat, income, count, value };
+    }).filter(i => i.count > 0 || activeTab === GameTab.INDUSTRIES);
+  }, [state.ownedBusinesses, globalMultiplier, activeTab]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (state.isPaused || !activeUser) return;
+      setState(prev => {
+        const incomePerSec = businessesIncome - maintenance;
+        const added = Math.max(0, incomePerSec);
+        const newXp = prev.xp + added * 0.0001 + 0.01;
+        const newLevel = Math.floor(Math.sqrt(newXp / 10)) + 1;
+        return {
+          ...prev,
+          money: prev.money + added,
+          totalEarned: prev.totalEarned + added,
+          xp: newXp,
+          level: newLevel > prev.level ? newLevel : prev.level
+        };
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [businessesIncome, maintenance, state.isPaused, activeUser]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (state.isPaused || !activeUser) return;
+      setState(prev => ({
+        ...prev,
+        assets: prev.assets.map(a => {
+          const change = (Math.random() - 0.5 + a.trend) * a.volatility * (prev.economicCycle === 'Recession' ? 2 : 1);
+          const newPrice = Math.max(0.01, a.price * (1 + change));
+          return { ...a, price: newPrice, history: [...a.history, newPrice].slice(-30) };
+        }),
+        economicCycle: Math.random() < 0.01 ? (['Normal', 'Boom', 'Recession', 'Recovery'][Math.floor(Math.random() * 4)] as EconomicCycle) : prev.economicCycle
+      }));
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [state.isPaused, activeUser]);
+
+  useEffect(() => {
+    if (!activeUser || loading) return;
+    const interval = setInterval(() => {
+      saveToCloud();
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [state, loading, activeUser]);
+
+  const togglePause = () => {
+    setState(prev => ({ ...prev, isPaused: !prev.isPaused }));
+  };
+
+  const buyBusiness = (id: string, qty: number = 1) => {
+    const bus = INITIAL_BUSINESSES.find(b => b.id === id);
+    if (!bus) return;
+    setState(prev => {
+      let tempOwned = [...prev.ownedBusinesses];
+      let existing = tempOwned.find(ob => ob.id === id);
+      let count = existing ? existing.count : 0;
+      let level = existing ? existing.level : 0;
+      let totalCost = 0;
+      for (let i = 0; i < qty; i++) totalCost += calculateNextPrice(bus.basePrice, count + i, level);
+      if (prev.money < totalCost) return prev;
+      if (existing) existing.count += qty;
+      else tempOwned.push({ id, count: qty, level: 0 });
+      return { ...prev, money: prev.money - totalCost, ownedBusinesses: tempOwned };
+    });
+  };
+
+  const buyAsset = (id: string) => {
+    const qtyInput = tradeQuantities[id] || '0';
+    const qty = parseFloat(qtyInput);
+    if (isNaN(qty) || qty <= 0) return;
+    setState(prev => {
+      const asset = prev.assets.find(a => a.id === id);
+      if (!asset) return prev;
+      const cost = asset.price * qty;
+      if (prev.money < cost) return prev;
+      return {
+        ...prev,
+        money: prev.money - cost,
+        assets: prev.assets.map(a => a.id === id ? { ...a, owned: a.owned + qty, avgBuyPrice: (a.avgBuyPrice * a.owned + cost) / (a.owned + qty) } : a)
+      };
+    });
+    setTradeQuantities(prev => ({ ...prev, [id]: '' }));
+  };
+
+  const sellAsset = (id: string) => {
+    const qtyInput = tradeQuantities[id] || '0';
+    const qty = parseFloat(qtyInput);
+    if (isNaN(qty) || qty <= 0) return;
+    setState(prev => {
+      const asset = prev.assets.find(a => a.id === id);
+      if (!asset || asset.owned < qty) return prev;
+      return { ...prev, money: prev.money + asset.price * qty, assets: prev.assets.map(a => a.id === id ? { ...a, owned: a.owned - qty } : a) };
+    });
+    setTradeQuantities(prev => ({ ...prev, [id]: '' }));
+  };
+
+  const upgradeClickPower = () => {
+    if (state.clickLevel >= 20) return;
+    const cost = Math.floor(200 * Math.pow(1.8, state.clickLevel - 1));
+    if (state.money < cost) return;
+
+    setState(prev => ({
+      ...prev,
+      money: prev.money - cost,
+      clickLevel: prev.clickLevel + 1,
+      clickPower: prev.clickPower + (prev.clickLevel < 10 ? 2 : 5)
+    }));
+  };
+
+  const buyShopItem = (id: string) => {
+    const item = INITIAL_LIFESTYLE.find(l => l.id === id);
+    if (!item) return;
+    setState(prev => {
+      if (prev.money < item.price) return prev;
+      let newInventory = [...prev.inventory];
+      let existing = newInventory.find(i => i.id === id);
+      if (existing) existing.count += 1;
+      else newInventory.push({ id, count: 1 });
+      return { ...prev, money: prev.money - item.price, inventory: newInventory };
+    });
+  };
+
+  const sellShopItem = (id: string) => {
+    const item = INITIAL_LIFESTYLE.find(l => l.id === id);
+    if (!item) return;
+    setState(prev => {
+      let newInventory = [...prev.inventory];
+      let existing = newInventory.find(i => i.id === id);
+      if (!existing || existing.count <= 0) return prev;
+      existing.count -= 1;
+      if (existing.count === 0) newInventory = newInventory.filter(i => i.id !== id);
+      const resaleValue = item.price * 0.8;
+      return { ...prev, money: prev.money + resaleValue, inventory: newInventory };
+    });
+  };
+
+  const manualClick = (e: React.MouseEvent) => {
+    if (state.isPaused || !activeUser) return;
+    const gain = state.clickPower * globalMultiplier;
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const newParticle = { id: Date.now(), x, y, value: `+${formatCurrency(gain)}` };
+    setParticles(prev => [...prev, newParticle]);
+    setTimeout(() => setParticles(prev => prev.filter(p => p.id !== newParticle.id)), 1000);
+    setState(prev => ({ ...prev, money: prev.money + gain, totalEarned: prev.totalEarned + gain, xp: prev.xp + 0.1 }));
+  };
+
+  // Login View
+  if (!activeUser) {
+    return (
+      <div className="min-h-screen bg-[#050505] flex items-center justify-center p-6 relative overflow-hidden">
+        {/* Decorative elements */}
+        <div className="absolute top-[-10%] left-[-10%] w-1/2 h-1/2 bg-emerald-500/10 rounded-full blur-[120px]" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-1/2 h-1/2 bg-blue-500/10 rounded-full blur-[120px]" />
+        
+        <div className="w-full max-w-lg glass-panel rounded-[3rem] p-12 border border-white/5 shadow-[0_0_100px_rgba(16,185,129,0.05)] relative z-10 space-y-10">
+          <div className="text-center space-y-4">
+            <div className="w-20 h-20 bg-emerald-500 rounded-3xl mx-auto flex items-center justify-center shadow-emerald-500/20 shadow-xl mb-6">
+              <TrendingUp className="w-10 h-10 text-white" />
+            </div>
+            <h1 className="text-4xl font-black text-white italic uppercase tracking-tighter leading-none">Empire <span className="text-emerald-500">Launchpad</span></h1>
+            <p className="text-slate-500 text-sm font-bold uppercase tracking-widest">Login to resume your global domination</p>
+          </div>
+
+          <form onSubmit={handleLogin} className="space-y-6">
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-4">Imperial Identifier</label>
+              <div className="relative group">
+                <div className="absolute inset-y-0 left-6 flex items-center text-slate-500 group-focus-within:text-emerald-500 transition-colors">
+                  <User size={20} />
+                </div>
+                <input 
+                  type="text" 
+                  placeholder="Enter Username" 
+                  value={loginInput}
+                  onChange={(e) => setLoginInput(e.target.value)}
+                  className="w-full bg-black/50 border border-white/5 rounded-2xl py-5 pl-16 pr-6 text-white font-bold tracking-tight focus:border-emerald-500/50 outline-none transition-all"
+                />
+              </div>
+            </div>
+
+            <button 
+              type="submit" 
+              disabled={loading || !loginInput.trim()} 
+              className="w-full py-5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-white/5 disabled:text-slate-700 text-white rounded-2xl font-black uppercase tracking-widest transition-all shadow-xl shadow-emerald-900/10 flex items-center justify-center gap-3 active:scale-[0.98]"
+            >
+              {loading ? <Loader2 className="w-6 h-6 animate-spin" /> : <>Initiate Empire <ArrowRightCircle size={20} /></>}
+            </button>
+          </form>
+
+          <div className="text-center">
+            <p className="text-[10px] font-black text-slate-600 uppercase tracking-widest">Progress is auto-synced to secure server</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const NavButton: React.FC<{ active: boolean; onClick: () => void; icon: React.ReactNode; label: string }> = ({ active, onClick, icon, label }) => (
+    <button onClick={onClick} className={`flex flex-col items-center gap-1 flex-1 py-2 rounded-2xl transition-all duration-300 ${active ? 'text-emerald-400 bg-emerald-400/10' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/50'}`}>
+      {React.cloneElement(icon as React.ReactElement, { className: 'w-6 h-6' })}
+      <span className="text-[10px] font-bold uppercase tracking-wider">{label}</span>
+    </button>
+  );
+
+  return (
+    <div className="min-h-screen bg-[#050505] text-slate-100 font-sans pb-32 overflow-x-hidden">
+      {/* Header */}
+      <header className="sticky top-0 z-30 glass-panel border-b border-white/5 px-6 py-4 shadow-2xl">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="p-2.5 bg-emerald-500 rounded-xl shadow-[0_0_15px_rgba(16,185,129,0.3)]"><TrendingUp className="w-6 h-6 text-white" /></div>
+            <div>
+              <h1 className="text-xl font-black tracking-tighter bg-gradient-to-r from-emerald-400 to-emerald-200 bg-clip-text text-transparent uppercase italic">Empire 3.0</h1>
+              <div className="flex items-center gap-2 text-xs text-slate-500 font-bold uppercase tracking-widest">
+                <User size={12} className="text-emerald-500" />
+                {state.username}
+                <span className="w-1 h-1 bg-slate-800 rounded-full mx-1" />
+                Level {state.level}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 md:gap-6">
+            <div className="hidden sm:block text-right">
+              <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-0.5">Liquid Assets</div>
+              <div className="text-xl font-mono font-black text-emerald-400 tracking-tighter">{formatFullCurrency(state.money)}</div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button onClick={togglePause} title="Pause Game" className={`p-3 rounded-xl transition-all border ${state.isPaused ? 'bg-amber-500/20 text-amber-500 border-amber-500/30' : 'bg-white/5 text-slate-500 border-white/5 hover:text-white hover:bg-white/10'}`}>
+                {state.isPaused ? <Play className="w-5 h-5 fill-current" /> : <Pause className="w-5 h-5 fill-current" />}
+              </button>
+              <button onClick={() => saveToCloud()} title="Force Save" className="p-3 bg-white/5 border border-white/5 rounded-xl text-slate-500 hover:text-white hover:bg-white/10 transition-all">
+                {syncing ? <Loader2 className="w-5 h-5 animate-spin text-emerald-500" /> : <Save className="w-5 h-5" />}
+              </button>
+              <button onClick={handleLogout} title="Save & Logout" className="p-3 bg-white/5 border border-white/5 rounded-xl text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-all">
+                <LogOut className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      {/* Pause Overlay */}
+      {state.isPaused && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center">
+          <div className="bg-[#0f0f0f] p-10 rounded-[3rem] border border-amber-500/30 shadow-[0_0_100px_rgba(245,158,11,0.1)] flex flex-col items-center gap-6 animate-in zoom-in duration-300">
+            <div className="w-20 h-20 bg-amber-500 rounded-full flex items-center justify-center shadow-amber-500/20 shadow-lg animate-pulse">
+              <Pause className="w-10 h-10 text-white fill-current" />
+            </div>
+            <div className="text-center space-y-2">
+              <h2 className="text-4xl font-black text-white italic tracking-tighter uppercase">Operations Halted</h2>
+              <p className="text-slate-500 text-sm max-w-[250px] mx-auto">Market is frozen. Your business revenue is on hold until you resume.</p>
+            </div>
+            <button onClick={togglePause} className="w-full py-4 bg-amber-500 hover:bg-amber-400 text-white rounded-2xl font-black uppercase tracking-widest transition-all shadow-lg active:scale-95">Resume Growth</button>
+          </div>
+        </div>
+      )}
+
+      <main className="max-w-7xl mx-auto p-4 md:p-8 space-y-12 animate-in fade-in duration-500">
+        {activeTab === GameTab.DASHBOARD && (
+          <div className="space-y-12">
+            {/* Status Bar */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="glass-panel rounded-3xl p-5 flex items-center gap-5 border-l-4 border-l-blue-500 shadow-xl">
+                <div className="w-12 h-12 rounded-2xl bg-blue-500/10 flex items-center justify-center text-blue-400"><Globe size={24} /></div>
+                <div className="space-y-0.5">
+                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Global Status</p>
+                  <p className={`text-xl font-black italic uppercase tracking-tighter ${state.economicCycle === 'Boom' ? 'text-emerald-500' : state.economicCycle === 'Recession' ? 'text-red-500' : 'text-blue-400'}`}>{state.economicCycle} Cycle</p>
+                </div>
+              </div>
+              <div className="glass-panel rounded-3xl p-5 flex items-center gap-5 border-l-4 border-l-purple-500 shadow-xl">
+                <div className="w-12 h-12 rounded-2xl bg-purple-500/10 flex items-center justify-center text-purple-400"><Percent size={24} /></div>
+                <div className="space-y-0.5">
+                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Growth Multiplier</p>
+                  <p className="text-xl font-black italic uppercase tracking-tighter text-white">x{globalMultiplier.toFixed(2)} Active</p>
+                </div>
+              </div>
+              <div className="glass-panel rounded-3xl p-5 flex items-center gap-5 border-l-4 border-l-emerald-500 shadow-xl">
+                <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 flex items-center justify-center text-emerald-400"><Activity size={24} /></div>
+                <div className="space-y-0.5">
+                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Realtime Net /s</p>
+                  <p className="text-xl font-black italic uppercase tracking-tighter text-emerald-400">+{formatCurrency(netIncome)}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Top Cards */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
+              <div className="lg:col-span-8 flex flex-col gap-8">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  {[
+                    { label: 'CASH', value: state.money, icon: <DollarSign className="w-4 h-4" />, color: 'text-emerald-400' },
+                    { label: 'BIZ', value: businessValue, icon: <Building2 className="w-4 h-4" />, color: 'text-blue-400' },
+                    { label: 'STOCKS', value: stockValue, icon: <TrendingUp className="w-4 h-4" />, color: 'text-yellow-400' },
+                    { label: 'ASSETS', value: inventoryValue, icon: <Package className="w-4 h-4" />, color: 'text-orange-400' },
+                  ].map((item) => (
+                    <div key={item.label} className="glass-panel p-6 rounded-[2rem] group hover:border-emerald-500/20 transition-all duration-300 shadow-lg">
+                      <div className="flex items-center gap-2 mb-4">
+                        <div className="p-2 bg-white/5 rounded-xl text-slate-500 group-hover:text-emerald-400 transition-colors">{item.icon}</div>
+                        <span className="text-[9px] font-black text-slate-500 uppercase tracking-[0.2em]">{item.label}</span>
+                      </div>
+                      <div className={`text-2xl font-mono font-black ${item.color} tracking-tighter truncate`}>{formatCurrency(item.value)}</div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="glass-panel p-8 rounded-[3rem] space-y-8 flex-grow shadow-xl border-t border-white/5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 flex items-center justify-center text-emerald-500"><Building2 size={24} /></div>
+                      <div className="space-y-0.5">
+                        <h3 className="text-lg font-black text-white uppercase italic tracking-tighter">Sector Holdings</h3>
+                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Industry Performance Tracking</p>
+                      </div>
+                    </div>
+                    <button onClick={() => setActiveTab(GameTab.INDUSTRIES)} className="px-5 py-2 rounded-xl bg-white/5 border border-white/5 text-[10px] font-black uppercase text-emerald-500 hover:bg-emerald-500 hover:text-black tracking-widest transition-all group flex items-center gap-2">
+                      Management <ChevronRight className="w-3 h-3 group-hover:translate-x-1 transition-transform" />
+                    </button>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-6">
+                    {industryStats.length > 0 ? industryStats.slice(0, 4).map((stat) => (
+                      <div key={stat.name} className="space-y-2">
+                        <div className="flex justify-between items-end">
+                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{stat.name}</span>
+                          <span className="text-xs font-black text-emerald-500 font-mono">+{formatCurrency(stat.income)}/s</span>
+                        </div>
+                        <div className="h-2 bg-black/40 rounded-full overflow-hidden border border-white/5">
+                          <div className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 rounded-full glow-emerald" style={{ width: `${Math.min(100, (stat.value / (businessValue || 1)) * 100)}%` }} />
+                        </div>
+                      </div>
+                    )) : (
+                      <div className="col-span-2 py-12 text-center flex flex-col items-center gap-3">
+                        <Briefcase className="w-8 h-8 text-slate-800" />
+                        <p className="text-slate-600 text-sm font-bold uppercase tracking-widest italic">No Industrial Assets Detected</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="lg:col-span-4 glass-panel p-10 rounded-[3rem] shadow-2xl flex flex-col items-center justify-center border border-white/5">
+                <div className="text-center space-y-2 mb-10">
+                  <h3 className="text-xl font-black text-white uppercase tracking-tighter italic">Capital Allocation</h3>
+                  <div className="h-0.5 w-12 bg-emerald-500/30 mx-auto" />
+                </div>
+                
+                <div className="h-72 w-full relative">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={[
+                          { name: 'Cash', value: state.money }, 
+                          { name: 'Business', value: businessValue }, 
+                          { name: 'Stocks', value: stockValue }, 
+                          { name: 'Crypto', value: cryptoValue }, 
+                          { name: 'Assets', value: inventoryValue }
+                        ].filter(v => v.value > 0)}
+                        innerRadius={85} outerRadius={115} paddingAngle={10} dataKey="value" stroke="none"
+                      >
+                        {COLORS.map((color, index) => <Cell key={`cell-${index}`} fill={color} />)}
+                      </Pie>
+                      <Tooltip 
+                        contentStyle={{ backgroundColor: '#0f0f0f', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '24px', fontSize: '12px' }} 
+                        itemStyle={{ color: '#fff', fontWeight: '800' }}
+                        formatter={(value: number) => formatCurrency(value)} 
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                     <div className="text-center space-y-1">
+                        <p className="text-[9px] font-black text-slate-500 uppercase tracking-[0.2em]">Net Worth</p>
+                        <p className="text-3xl font-black text-white italic tracking-tighter leading-none">{formatCurrency(totalNetWorth)}</p>
+                     </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Clicker Area */}
+            <div className="flex flex-col items-center gap-8">
+              <div 
+                className={`glass-panel rounded-[4rem] p-20 w-full max-w-5xl flex flex-col items-center justify-center text-center group transition-all duration-700 border-2 border-white/5 relative shadow-[0_0_100px_rgba(16,185,129,0.05)] overflow-hidden min-h-[550px] ${state.isPaused ? 'cursor-not-allowed grayscale' : 'hover:border-emerald-500/40 hover:shadow-emerald-500/10 cursor-pointer active:scale-[0.985]'}`} 
+                onClick={manualClick}
+              >
+                {!state.isPaused && <div className="absolute inset-0 bg-gradient-to-b from-emerald-500/10 via-transparent to-emerald-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-1000" />}
+
+                <div className="absolute inset-0 pointer-events-none overflow-hidden">
+                   {particles.map(p => (
+                     <span key={p.id} className="particle text-emerald-400 font-mono italic text-xl" style={{ left: p.x, top: p.y }}>
+                       {p.value}
+                     </span>
+                   ))}
+                </div>
+
+                <div className="relative z-10 flex flex-col items-center gap-10 w-full max-w-2xl">
+                  <div className="relative group/orb">
+                    <div className="w-64 h-64 sm:w-80 sm:h-80 glass-panel rounded-full flex items-center justify-center shadow-2xl border-4 border-white/10 group-hover:border-emerald-500/50 group-hover:scale-110 transition-all duration-500">
+                      <div className="w-52 h-52 sm:w-64 sm:h-64 bg-slate-900/50 rounded-full flex items-center justify-center border border-white/5 shadow-inner">
+                        <Zap className="w-28 h-28 sm:w-40 sm:h-40 text-emerald-500 fill-emerald-500/20 drop-shadow-[0_0_40px_rgba(16,185,129,0.8)]" />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="space-y-6 w-full">
+                    <p className="text-4xl sm:text-6xl font-black text-emerald-400 italic tracking-tighter">+{formatCurrency(state.clickPower * globalMultiplier)}</p>
+                    <h3 className="text-4xl font-black text-white italic tracking-tighter uppercase">Generate Capital</h3>
+                  </div>
+                </div>
+              </div>
+              <div className="w-full max-w-lg glass-panel rounded-[2.5rem] p-8 border border-white/5 shadow-2xl space-y-6">
+                 <button onClick={upgradeClickPower} disabled={state.money < Math.floor(200 * Math.pow(1.8, state.clickLevel - 1)) || state.clickLevel >= 20 || state.isPaused} className={`w-full py-5 rounded-2xl font-black uppercase tracking-widest text-xs flex items-center justify-center gap-3 transition-all ${state.money >= Math.floor(200 * Math.pow(1.8, state.clickLevel - 1)) && state.clickLevel < 20 && !state.isPaused ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : 'bg-white/5 text-slate-700 cursor-not-allowed border border-white/10'}`}>
+                    Upgrade Efficiency: {formatCurrency(Math.floor(200 * Math.pow(1.8, state.clickLevel - 1)))}
+                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* SHOP TAB */}
+        {activeTab === GameTab.SHOP && (
+          <div className="space-y-12 animate-in fade-in duration-500">
+            <div className="flex flex-col md:flex-row justify-between items-end gap-6">
+              <div className="space-y-2">
+                <p className="text-xs font-black text-emerald-500 uppercase tracking-[0.3em]">Premier Marketplace</p>
+                <h2 className="text-5xl font-black text-white italic uppercase tracking-tighter">Elite <span className="text-emerald-500">Acquisitions</span></h2>
+              </div>
+              <div className="glass-panel px-8 py-4 rounded-3xl flex items-center gap-6 border-emerald-500/20 shadow-lg shadow-emerald-500/5">
+                <div className="flex flex-col items-center">
+                  <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Global Multiplier</span>
+                  <span className="text-2xl font-black text-emerald-400 font-mono tracking-tighter">x{globalMultiplier.toFixed(2)}</span>
+                </div>
+                <div className="w-px h-8 bg-white/10" />
+                <div className="flex flex-col items-center">
+                  <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Inventory Value</span>
+                  <span className="text-2xl font-black text-white font-mono tracking-tighter">{formatCurrency(inventoryValue)}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
+              {INITIAL_LIFESTYLE.map(item => {
+                const invItem = state.inventory.find(i => i.id === item.id);
+                const count = invItem ? invItem.count : 0;
+                return (
+                  <div key={item.id} className="glass-panel rounded-[4rem] p-0 relative overflow-hidden transition-all duration-500 flex flex-col justify-between min-h-[500px] border-2 border-white/5 shadow-2xl hover:border-emerald-500/20 group">
+                    <div className="h-60 relative overflow-hidden">
+                      <img src={item.image} alt={item.name} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
+                      <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0a] via-transparent to-transparent" />
+                      {count > 0 && (
+                        <div className="absolute top-4 left-4 px-4 py-2 bg-emerald-500 rounded-2xl shadow-xl border border-emerald-400/30 flex items-center gap-2">
+                          <Package size={14} className="text-black" />
+                          <span className="text-xs font-black text-black uppercase tracking-widest">Holdings: {count}</span>
+                        </div>
+                      )}
+                      <div className="absolute bottom-4 left-6">
+                        <h3 className="text-2xl font-black text-white italic tracking-tighter uppercase leading-none">{item.name}</h3>
+                      </div>
+                    </div>
+
+                    <div className="p-8 space-y-6 flex-grow flex flex-col justify-between">
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="p-3 bg-white/5 rounded-2xl border border-white/5">
+                            <div className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Prestige</div>
+                            <div className="text-white font-black font-mono">+{item.prestige * (count || 1)}</div>
+                          </div>
+                          <div className="p-3 bg-white/5 rounded-2xl border border-white/5">
+                            <div className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Yield / Unit</div>
+                            <div className="text-emerald-400 font-black font-mono">x{item.multiplier.toFixed(2)}</div>
+                          </div>
+                        </div>
+                        <div className="text-3xl font-mono font-black text-white tracking-tighter flex items-center gap-3">
+                           {formatCurrency(item.price)}
+                        </div>
+                      </div>
+                      
+                      <div className="space-y-3 pt-4 border-t border-white/5">
+                        <button 
+                          onClick={() => buyShopItem(item.id)} 
+                          disabled={state.money < item.price || state.isPaused} 
+                          className={`w-full py-4 rounded-2xl font-black uppercase tracking-widest text-xs flex items-center justify-center gap-3 transition-all ${state.money >= item.price && !state.isPaused ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg active:scale-95' : 'bg-white/5 text-slate-700 cursor-not-allowed'}`}
+                        >
+                          <ShoppingBag size={16} /> Purchase Unit
+                        </button>
+                        
+                        {count > 0 && (
+                          <button 
+                            onClick={() => sellShopItem(item.id)} 
+                            disabled={state.isPaused} 
+                            className="w-full py-4 bg-white/5 border border-white/10 hover:bg-red-500/20 text-red-400 rounded-2xl font-black uppercase tracking-widest text-[10px] transition-all flex items-center justify-center gap-3"
+                          >
+                            <Trash2 size={14} /> Liquidate 1 Unit ({formatCurrency(item.price * 0.8)})
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* PORTFOLIO TAB */}
+        {activeTab === GameTab.PORTFOLIO && (
+          <div className="space-y-12 animate-in slide-in-from-top duration-600">
+            <div className="space-y-2">
+              <p className="text-xs font-black text-emerald-500 uppercase tracking-[0.3em]">Strategic Audit</p>
+              <h2 className="text-6xl font-black text-white italic uppercase tracking-tighter leading-none">Empire <span className="text-emerald-500">Valuation</span></h2>
+            </div>
+            
+            <div className="glass-panel p-16 rounded-[4rem] border border-white/5 shadow-2xl">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-20 items-center">
+                <div className="h-[450px] w-full relative group">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={[
+                          { name: 'Liquid Cash', value: state.money }, 
+                          { name: 'Business Equity', value: businessValue }, 
+                          { name: 'Stock Holdings', value: stockValue }, 
+                          { name: 'Crypto Reserves', value: cryptoValue }, 
+                          { name: 'Physical Assets', value: inventoryValue }
+                        ].filter(v => v.value > 0)}
+                        innerRadius={110} outerRadius={150} paddingAngle={12} dataKey="value" stroke="none"
+                      >
+                        {COLORS.map((color, index) => <Cell key={`cell-${index}`} fill={color} className="outline-none hover:opacity-80 transition-opacity" />)}
+                      </Pie>
+                      <Tooltip contentStyle={{ backgroundColor: '#0f0f0f', border: 'none', borderRadius: '32px', color: '#fff' }} formatter={(value: number) => formatCurrency(value)} />
+                      <Legend verticalAlign="bottom" height={36} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                     <div className="text-center space-y-2">
+                        <p className="text-[12px] font-black text-slate-500 uppercase tracking-[0.4em]">Net Valuation</p>
+                        <p className="text-5xl font-black text-white italic tracking-tighter leading-none">{formatCurrency(totalNetWorth)}</p>
+                     </div>
+                  </div>
+                </div>
+
+                <div className="space-y-6">
+                   {[
+                     { label: 'CASH ON HAND', value: state.money, color: 'text-emerald-400' },
+                     { label: 'TOTAL BUSINESS VALUE', value: businessValue, color: 'text-blue-400' },
+                     { label: 'MARKET SECURITIES', value: stockValue + cryptoValue, color: 'text-yellow-400' },
+                     { label: 'INVENTORY VALUATION', value: inventoryValue, color: 'text-indigo-400' },
+                   ].map(item => (
+                    <div key={item.label} className="p-8 bg-white/5 rounded-[2.5rem] flex justify-between items-center border border-white/5 transition-all hover:bg-white/10">
+                      <span className="text-[11px] text-slate-500 font-black uppercase tracking-widest">{item.label}</span>
+                      <span className={`text-3xl font-mono font-black ${item.color} tracking-tighter`}>{formatCurrency(item.value)}</span>
+                    </div>
+                   ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Market Tabs */}
+        {(activeTab === GameTab.STOCKS || activeTab === GameTab.CRYPTO) && (
+          <div className="space-y-10 animate-in slide-in-from-right duration-500">
+             <div className="space-y-2">
+              <p className="text-xs font-black text-emerald-500 uppercase tracking-[0.3em]">Capital Markets</p>
+              <h2 className="text-5xl font-black text-white italic uppercase tracking-tighter">{activeTab === GameTab.STOCKS ? 'Equity' : 'Liquidity'} <span className="text-emerald-500">Terminal</span></h2>
+            </div>
+            <div className="grid grid-cols-1 gap-6">
+              {state.assets.filter(a => a.type === (activeTab === GameTab.STOCKS ? 'stock' : 'crypto')).map(asset => {
+                const change = ((asset.price - asset.history[0]) / (asset.history[0] || 1)) * 100;
+                return (
+                  <div key={asset.id} className="glass-panel p-8 rounded-[3rem] grid grid-cols-1 lg:grid-cols-4 gap-10 items-center border border-white/5 hover:border-emerald-500/20 transition-all shadow-xl">
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-4">
+                        <div className={`p-4 rounded-2xl ${activeTab === GameTab.STOCKS ? 'bg-blue-500/10 text-blue-400' : 'bg-orange-500/10 text-orange-400'}`}>
+                          {activeTab === GameTab.STOCKS ? <TrendingUp size={24} /> : <Bitcoin size={24} />}
+                        </div>
+                        <h3 className="text-2xl font-black text-white italic tracking-tighter uppercase">{asset.name}</h3>
+                      </div>
+                      <div className="text-4xl font-black font-mono text-white tracking-tighter">{formatFullCurrency(asset.price)}</div>
+                      <div className={`text-[10px] font-black uppercase flex items-center gap-2 ${change >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {change >= 0 ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />} {Math.abs(change).toFixed(2)}%
+                      </div>
+                    </div>
+                    <div className="h-32 px-4">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={asset.history.map((h, i) => ({ val: h, i }))}>
+                          <Area type="monotone" dataKey="val" stroke={change >= 0 ? '#10b981' : '#ef4444'} fill={change >= 0 ? '#10b981' : '#ef4444'} fillOpacity={0.1} strokeWidth={4} />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <div className="bg-black/30 rounded-[2.5rem] p-6 space-y-4 border border-white/5 shadow-inner">
+                      <div className="flex justify-between text-[10px] font-black text-slate-500 uppercase"><span>Holdings</span><span className="text-white">{asset.owned.toFixed(2)}</span></div>
+                      <div className="flex justify-between text-[10px] font-black text-slate-500 uppercase"><span>Equity</span><span className="text-emerald-400">{formatCurrency(asset.owned * asset.price)}</span></div>
+                    </div>
+                    <div className="space-y-4">
+                      <input 
+                        type="number" 
+                        placeholder="Qty" 
+                        value={tradeQuantities[asset.id] || ''} 
+                        onChange={(e) => setTradeQuantities(prev => ({ ...prev, [asset.id]: e.target.value }))} 
+                        className="w-full bg-black/50 border border-white/10 rounded-2xl py-4 px-6 text-white font-mono text-sm" 
+                      />
+                      <div className="grid grid-cols-2 gap-4">
+                        <button onClick={() => buyAsset(asset.id)} disabled={state.isPaused} className="py-4 rounded-2xl font-black uppercase text-xs bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg">Buy</button>
+                        <button onClick={() => sellAsset(asset.id)} disabled={state.isPaused} className="py-4 rounded-2xl font-black uppercase text-xs bg-white/5 border border-white/10 hover:bg-red-500/20 text-red-400">Sell</button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Industry Sectors */}
+        {activeTab === GameTab.INDUSTRIES && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 animate-in slide-in-from-bottom duration-500">
+            {['Retail', 'Restaurants', 'Media', 'Shipping', 'Sport', 'Hotels', 'Property', 'IT', 'Medicine', 'Resources', 'Finance', 'Airline'].map((cat) => {
+              const stat = industryStats.find(s => s.name === cat) || { income: 0, count: 0, value: 0 };
+              return (
+                <div key={cat} className="glass-panel p-8 rounded-[2.5rem] hover:border-emerald-500/50 transition-all cursor-pointer group shadow-xl" onClick={() => { setSelectedIndustry(cat as IndustryCategory); setActiveTab(GameTab.INDUSTRY_DETAIL); }}>
+                  <div className="flex items-center justify-between mb-8">
+                    <div className="p-4 bg-white/5 rounded-2xl group-hover:bg-emerald-500 transition-all"><Layers className="w-8 h-8 text-emerald-400 group-hover:text-black transition-colors" /></div>
+                    <ChevronRight className="w-6 h-6 text-slate-700 group-hover:text-white" />
+                  </div>
+                  <h3 className="text-2xl font-black text-white italic uppercase">{cat}</h3>
+                  <div className="grid grid-cols-2 gap-6 mt-10">
+                    <div><div className="text-[9px] text-slate-500 uppercase font-black">Net Flow</div><div className="text-xl text-emerald-400 font-mono font-black">{formatCurrency(stat.income)}/s</div></div>
+                    <div><div className="text-[9px] text-slate-500 uppercase font-black">Units</div><div className="text-xl text-white font-mono font-black">{stat.count}</div></div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Industry Detail */}
+        {activeTab === GameTab.INDUSTRY_DETAIL && selectedIndustry && (
+          <div className="space-y-10 animate-in fade-in slide-in-from-left duration-500">
+            <button onClick={() => setActiveTab(GameTab.INDUSTRIES)} className="flex items-center gap-3 text-slate-500 hover:text-white transition-all font-black uppercase text-[10px] tracking-widest bg-white/5 px-6 py-3 rounded-2xl"><ArrowLeft size={16} /> Return to Sectors</button>
+            <h2 className="text-5xl font-black text-white italic uppercase">{selectedIndustry} <span className="text-emerald-500">Industry</span></h2>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+              {INITIAL_BUSINESSES.filter(b => b.category === selectedIndustry).map(bus => {
+                const owned = state.ownedBusinesses.find(ob => ob.id === bus.id);
+                const count = owned ? owned.count : 0;
+                const level = owned ? owned.level : 0;
+                const nextPrice = calculateNextPrice(bus.basePrice, count, level);
+                return (
+                  <div key={bus.id} className="glass-panel p-10 rounded-[3rem] border-2 border-white/5 shadow-2xl">
+                    <div className="flex justify-between items-start mb-8">
+                      <h3 className="text-3xl font-black text-white italic uppercase">{bus.name}</h3>
+                      <span className="px-4 py-1.5 bg-emerald-500/10 rounded-full text-[10px] font-black text-emerald-500 uppercase">Lv. {level}</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4 mb-10">
+                      <div className="p-5 bg-white/5 rounded-3xl text-center"><div className="text-[9px] text-slate-500 uppercase font-black mb-2">Net Flow</div><div className="text-2xl text-emerald-400 font-mono font-black">{formatCurrency(calculateIncome(bus.baseIncome, count, level) * globalMultiplier)}/s</div></div>
+                      <div className="p-5 bg-white/5 rounded-3xl text-center"><div className="text-[9px] text-slate-500 uppercase font-black mb-2">Units</div><div className="text-2xl text-white font-mono font-black">{count}</div></div>
+                    </div>
+                    <button onClick={() => buyBusiness(bus.id)} disabled={state.money < nextPrice || state.isPaused} className={`w-full py-6 rounded-[2rem] font-black uppercase text-sm flex items-center justify-center gap-4 transition-all ${state.money >= nextPrice && !state.isPaused ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-2xl' : 'bg-white/5 text-slate-700 cursor-not-allowed'}`}>
+                      Invest: {formatCurrency(nextPrice)}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </main>
+
+      {/* Bottom Navbar */}
+      <nav className="fixed bottom-8 left-1/2 -translate-x-1/2 z-40 glass-panel border border-white/10 rounded-[3rem] px-6 py-4 shadow-2xl flex items-center justify-center gap-2 w-[90%] max-w-2xl">
+        <NavButton active={activeTab === GameTab.DASHBOARD} onClick={() => setActiveTab(GameTab.DASHBOARD)} icon={<LayoutDashboard />} label="Terminal" />
+        <NavButton active={activeTab === GameTab.INDUSTRIES || activeTab === GameTab.INDUSTRY_DETAIL} onClick={() => setActiveTab(GameTab.INDUSTRIES)} icon={<Briefcase />} label="Sectors" />
+        <NavButton active={activeTab === GameTab.STOCKS} onClick={() => setActiveTab(GameTab.STOCKS)} icon={<TrendingUp />} label="Equity" />
+        <NavButton active={activeTab === GameTab.CRYPTO} onClick={() => setActiveTab(GameTab.CRYPTO)} icon={<Bitcoin />} label="Liquidity" />
+        <NavButton active={activeTab === GameTab.PORTFOLIO} onClick={() => setActiveTab(GameTab.PORTFOLIO)} icon={<PieIcon />} label="Audit" />
+        <NavButton active={activeTab === GameTab.SHOP} onClick={() => setActiveTab(GameTab.SHOP)} icon={<ShoppingBag />} label="Elite Shop" />
+      </nav>
+    </div>
+  );
+};
+
+export default App;
