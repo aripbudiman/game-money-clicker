@@ -101,13 +101,37 @@ export const INITIAL_BUSINESSES: Business[] = [
 ];
 
 export const INITIAL_STOCKS: Asset[] = [
-  { id: 's1', name: 'TLKM Retail', type: 'stock', price: 100, history: [100], volatility: 0.02, trend: 0.001, owned: 0, avgBuyPrice: 0, sector: 'Retail' },
-  { id: 's2', name: 'BCA Finance', type: 'stock', price: 800, history: [800], volatility: 0.01, trend: 0.0005, owned: 0, avgBuyPrice: 0, sector: 'Finance' },
-  { id: 's_antam', name: 'ANTAM Gold', type: 'stock', price: 180, history: [180], volatility: 0.04, trend: 0.0015, owned: 0, avgBuyPrice: 0, sector: 'Resources' },
-  { id: 's_apple', name: 'Apple Inc.', type: 'stock', price: 3500, history: [3500], volatility: 0.02, trend: 0.0009, owned: 0, avgBuyPrice: 0, sector: 'IT' },
+  // INDONESIAN BLUE CHIPS
+  { id: 's1', name: 'TLKM (Telkom Ind)', type: 'stock', price: 100, history: [100], volatility: 0.02, trend: 0.001, owned: 0, avgBuyPrice: 0, sector: 'IT' },
+  { id: 's2', name: 'BBCA (Bank Central Asia)', type: 'stock', price: 800, history: [800], volatility: 0.01, trend: 0.0008, owned: 0, avgBuyPrice: 0, sector: 'Finance' },
+  { id: 's_bbri', name: 'BBRI (Bank Rakyat Ind)', type: 'stock', price: 550, history: [550], volatility: 0.015, trend: 0.0006, owned: 0, avgBuyPrice: 0, sector: 'Finance' },
+  { id: 's_asii', name: 'ASII (Astra Int)', type: 'stock', price: 420, history: [420], volatility: 0.03, trend: 0.0004, owned: 0, avgBuyPrice: 0, sector: 'Transportation' },
+  { id: 's_goto', name: 'GOTO (Gojek Tokopedia)', type: 'stock', price: 15, history: [15], volatility: 0.08, trend: -0.0002, owned: 0, avgBuyPrice: 0, sector: 'IT' },
+  { id: 's_unvr', name: 'UNVR (Unilever Ind)', type: 'stock', price: 380, history: [380], volatility: 0.02, trend: 0.0002, owned: 0, avgBuyPrice: 0, sector: 'Retail' },
+  { id: 's_icbp', name: 'ICBP (Indofood CBP)', type: 'stock', price: 950, history: [950], volatility: 0.018, trend: 0.0005, owned: 0, avgBuyPrice: 0, sector: 'Retail' },
+  { id: 's_antam', name: 'ANTAM (Aneka Tambang)', type: 'stock', price: 180, history: [180], volatility: 0.05, trend: 0.0015, owned: 0, avgBuyPrice: 0, sector: 'Resources' },
+  { id: 's_adro', name: 'ADRO (Adaro Energy)', type: 'stock', price: 240, history: [240], volatility: 0.06, trend: 0.002, owned: 0, avgBuyPrice: 0, sector: 'Resources' },
+  
+  // GLOBAL TECH
+  { id: 's_apple', name: 'AAPL (Apple Inc)', type: 'stock', price: 3500, history: [3500], volatility: 0.02, trend: 0.0012, owned: 0, avgBuyPrice: 0, sector: 'IT' },
+  { id: 's_nvda', name: 'NVDA (NVIDIA)', type: 'stock', price: 8500, history: [8500], volatility: 0.07, trend: 0.0045, owned: 0, avgBuyPrice: 0, sector: 'IT' },
+  { id: 's_tsla', name: 'TSLA (Tesla)', type: 'stock', price: 2200, history: [2200], volatility: 0.09, trend: 0.0025, owned: 0, avgBuyPrice: 0, sector: 'Transportation' },
 ];
 
 export const INITIAL_CRYPTO: Asset[] = [
+  // MAJOR CRYPTOS
+  { id: 'c_btc', name: 'Bitcoin (BTC)', type: 'crypto', price: 65000, history: [65000], volatility: 0.08, trend: 0.005, owned: 0, avgBuyPrice: 0 },
+  { id: 'c_eth', name: 'Ethereum (ETH)', type: 'crypto', price: 3500, history: [3500], volatility: 0.09, trend: 0.0045, owned: 0, avgBuyPrice: 0 },
+  { id: 'c_sol', name: 'Solana (SOL)', type: 'crypto', price: 145, history: [145], volatility: 0.12, trend: 0.007, owned: 0, avgBuyPrice: 0 },
+  { id: 'c_ada', name: 'Cardano (ADA)', type: 'crypto', price: 0.5, history: [0.5], volatility: 0.1, trend: 0.002, owned: 0, avgBuyPrice: 0 },
+  { id: 'c_dot', name: 'Polkadot (DOT)', type: 'crypto', price: 8.5, history: [8.5], volatility: 0.11, trend: 0.0035, owned: 0, avgBuyPrice: 0 },
+  
+  // MEME & LOCAL
+  { id: 'c_doge', name: 'Dogecoin (DOGE)', type: 'crypto', price: 0.15, history: [0.15], volatility: 0.25, trend: 0.001, owned: 0, avgBuyPrice: 0 },
+  { id: 'c_pepe', name: 'PEPE Coin', type: 'crypto', price: 0.00001, history: [0.00001], volatility: 0.45, trend: 0.0005, owned: 0, avgBuyPrice: 0 },
+  { id: 'c_idrt', name: 'Rupiah Token (IDRT)', type: 'crypto', price: 1, history: [1], volatility: 0.005, trend: 0.0001, owned: 0, avgBuyPrice: 0 },
+  
+  // NANO SERIES
   { id: 'c1', name: 'BitSim (BSIM)', type: 'crypto', price: 45000, history: [45000], volatility: 0.08, trend: 0.005, owned: 0, avgBuyPrice: 0 },
   { id: 'c2', name: 'EtherSim (ESIM)', type: 'crypto', price: 2800, history: [2800], volatility: 0.09, trend: 0.004, owned: 0, avgBuyPrice: 0 },
 ];
