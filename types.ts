@@ -16,9 +16,9 @@ export interface Business {
 }
 
 export interface OwnedBusiness {
-  id: string;
-  count: number;
-  level: number; // Upgrade level per unit
+  instanceId: string; // Unique identifier for a specific branch
+  businessId: string; // Reference to the business template ID
+  level: number;      // Level for this specific instance
 }
 
 export interface Asset {
@@ -68,7 +68,7 @@ export interface PlayerState {
 
 export enum GameTab {
   DASHBOARD = 'dashboard',
-  PORTFOLIO = 'portfolio',
+  INVENTORY = 'inventory',
   INDUSTRIES = 'industries',
   STOCKS = 'stocks',
   CRYPTO = 'crypto',

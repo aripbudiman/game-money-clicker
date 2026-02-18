@@ -14,12 +14,17 @@ export const formatFullCurrency = (amount: number): string => {
   }).format(amount);
 };
 
-export const calculateNextPrice = (basePrice: number, count: number, level: number = 0): number => {
-  // Base price increases with quantity and upgrade level
-  return Math.floor(basePrice * Math.pow(1.15, count) * Math.pow(1.5, level));
+export const calculateNextPrice = (basePrice: number, currentCount: number): number => {
+  // Price for a NEW branch depends on how many branches of this type you already have
+  return Math.floor(basePrice * Math.pow(1.15, currentCount));
 };
 
-export const calculateIncome = (baseIncome: number, count: number, level: number = 0): number => {
-  // Income increases with count and upgrade level
-  return baseIncome * count * (1 + level * 0.5);
+export const calculateUpgradePrice = (basePrice: number, currentLevel: number): number => {
+  // Cost to upgrade a specific branch instance
+  return Math.floor(basePrice * 0.5 * Math.pow(1.8, currentLevel + 1));
+};
+
+export const calculateIncome = (baseIncome: number, level: number = 0): number => {
+  // Income for a SINGLE instance based on its specific level
+  return baseIncome * (1 + level * 0.5);
 };
