@@ -175,10 +175,21 @@ const App: React.FC = () => {
   }, 0);
 
   const netIncome = Math.max(0, businessesIncome - maintenance);
+  
+  const calculateBusinessResale = (busId: string, level: number) => {
+    const bus = INITIAL_BUSINESSES.find(b => b.id === busId);
+    if (!bus) return 0;
+    // Base resale value: 70% of base price
+    // Plus 50% of the calculated spent upgrades
+    let totalSpentOnUpgrades = 0;
+    for (let i = 0; i < level; i++) {
+      totalSpentOnUpgrades += calculateUpgradePrice(bus.basePrice, i);
+    }
+    return (bus.basePrice * 0.7) + (totalSpentOnUpgrades * 0.5);
+  };
+
   const businessValue = state.ownedBusinesses.reduce((acc, ob) => {
-    const bus = INITIAL_BUSINESSES.find(b => b.id === ob.businessId);
-    if (!bus) return acc;
-    return acc + bus.basePrice;
+    return acc + calculateBusinessResale(ob.businessId, ob.level);
   }, 0);
 
   const stockValue = state.assets.reduce((acc, a) => a.type === 'stock' ? acc + (a.owned * a.price) : acc, 0);
@@ -199,10 +210,6 @@ const App: React.FC = () => {
         return acc + (bus ? calculateIncome(bus.baseIncome, ob.level) : 0);
       }, 0) * globalMultiplier;
       const count = ownedInCat.length;
-      const value = ownedInCat.reduce((acc, ob) => {
-        const bus = INITIAL_BUSINESSES.find(b => b.id === ob.businessId);
-        return acc + (bus ? bus.basePrice : 0);
-      }, 0);
       
       const instances = ownedInCat.map(ob => {
         const bus = INITIAL_BUSINESSES.find(b => b.id === ob.businessId);
@@ -212,11 +219,12 @@ const App: React.FC = () => {
           name: bus?.name || 'Unknown Entity', 
           level: ob.level, 
           income: bus ? calculateIncome(bus.baseIncome, ob.level) * globalMultiplier : 0,
-          upgradePrice: bus ? calculateUpgradePrice(bus.basePrice, ob.level) : 0
+          upgradePrice: bus ? calculateUpgradePrice(bus.basePrice, ob.level) : 0,
+          resaleValue: calculateBusinessResale(ob.businessId, ob.level)
         };
       });
 
-      return { name: cat, income, count, value, instances };
+      return { name: cat, income, count, instances };
     }).filter(i => i.count > 0 || activeTab === GameTab.INDUSTRIES);
   }, [state.ownedBusinesses, globalMultiplier, activeTab]);
 
@@ -290,6 +298,19 @@ const App: React.FC = () => {
     });
   };
 
+  const sellBusinessInstance = (instanceId: string) => {
+    setState(prev => {
+      const instance = prev.ownedBusinesses.find(ob => ob.instanceId === instanceId);
+      if (!instance) return prev;
+      const resaleValue = calculateBusinessResale(instance.businessId, instance.level);
+      return {
+        ...prev,
+        money: prev.money + resaleValue,
+        ownedBusinesses: prev.ownedBusinesses.filter(ob => ob.instanceId !== instanceId)
+      };
+    });
+  };
+
   const upgradeBusiness = (instanceId: string) => {
     setState(prev => {
       const instance = prev.ownedBusinesses.find(ob => ob.instanceId === instanceId);
@@ -307,8 +328,8 @@ const App: React.FC = () => {
     });
   };
 
-  const buyAsset = (id: string) => {
-    const qtyInput = tradeQuantities[id] || '0';
+  const buyAsset = (id: string, customQty?: number) => {
+    const qtyInput = customQty !== undefined ? customQty.toString() : (tradeQuantities[id] || '0');
     const qty = parseFloat(qtyInput);
     if (isNaN(qty) || qty <= 0) return;
     setState(prev => {
@@ -322,11 +343,11 @@ const App: React.FC = () => {
         assets: prev.assets.map(a => a.id === id ? { ...a, owned: a.owned + qty, avgBuyPrice: (a.avgBuyPrice * a.owned + cost) / (a.owned + qty) } : a)
       };
     });
-    setTradeQuantities(prev => ({ ...prev, [id]: '' }));
+    if (customQty === undefined) setTradeQuantities(prev => ({ ...prev, [id]: '' }));
   };
 
-  const sellAsset = (id: string) => {
-    const qtyInput = tradeQuantities[id] || '0';
+  const sellAsset = (id: string, customQty?: number) => {
+    const qtyInput = customQty !== undefined ? customQty.toString() : (tradeQuantities[id] || '0');
     const qty = parseFloat(qtyInput);
     if (isNaN(qty) || qty <= 0) return;
     setState(prev => {
@@ -334,7 +355,7 @@ const App: React.FC = () => {
       if (!asset || asset.owned < qty) return prev;
       return { ...prev, money: prev.money + asset.price * qty, assets: prev.assets.map(a => a.id === id ? { ...a, owned: a.owned - qty } : a) };
     });
-    setTradeQuantities(prev => ({ ...prev, [id]: '' }));
+    if (customQty === undefined) setTradeQuantities(prev => ({ ...prev, [id]: '' }));
   };
 
   const upgradeClickPower = () => {
@@ -592,17 +613,37 @@ const App: React.FC = () => {
                             </div>
                             <div className="text-right">
                               <div className="text-xl font-black text-emerald-400 font-mono">+{formatCurrency(inst.income)}/s</div>
-                              <div className="text-[9px] font-bold text-slate-600 uppercase">Branch Profit</div>
+                              <div className="text-[9px] font-bold text-slate-600 uppercase">Profit Flow</div>
                             </div>
                           </div>
                           
-                          <button 
-                            onClick={() => upgradeBusiness(inst.instanceId)}
-                            disabled={state.money < inst.upgradePrice || state.isPaused}
-                            className={`w-full py-3 rounded-2xl flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest transition-all ${state.money >= inst.upgradePrice && !state.isPaused ? 'bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500 hover:text-black border border-emerald-500/20 shadow-lg' : 'bg-white/5 text-slate-700 cursor-not-allowed border border-white/5'}`}
-                          >
-                            <ArrowUp size={14} /> Upgrade Branch Level: {formatCurrency(inst.upgradePrice)}
-                          </button>
+                          <div className="grid grid-cols-2 gap-3 mb-2">
+                            <div className="px-4 py-2 bg-black/20 rounded-xl border border-white/5">
+                              <div className="text-[8px] font-black text-slate-500 uppercase mb-0.5">Upgrade Cost</div>
+                              <div className="text-xs font-black text-white">{formatCurrency(inst.upgradePrice)}</div>
+                            </div>
+                            <div className="px-4 py-2 bg-black/20 rounded-xl border border-white/5">
+                              <div className="text-[8px] font-black text-slate-500 uppercase mb-0.5">Sell Value</div>
+                              <div className="text-xs font-black text-amber-500">{formatCurrency(inst.resaleValue)}</div>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-3">
+                            <button 
+                              onClick={() => upgradeBusiness(inst.instanceId)}
+                              disabled={state.money < inst.upgradePrice || state.isPaused}
+                              className={`py-3 rounded-2xl flex items-center justify-center gap-2 text-[9px] font-black uppercase tracking-widest transition-all ${state.money >= inst.upgradePrice && !state.isPaused ? 'bg-emerald-500 text-black shadow-lg hover:bg-emerald-400' : 'bg-white/5 text-slate-700 cursor-not-allowed'}`}
+                            >
+                              <ArrowUp size={12} /> Upgrade
+                            </button>
+                            <button 
+                              onClick={() => sellBusinessInstance(inst.instanceId)}
+                              disabled={state.isPaused}
+                              className="py-3 rounded-2xl flex items-center justify-center gap-2 text-[9px] font-black uppercase tracking-widest transition-all bg-red-500/10 border border-red-500/20 text-red-500 hover:bg-red-500 hover:text-white"
+                            >
+                              <Trash2 size={12} /> Liquidate
+                            </button>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -638,7 +679,7 @@ const App: React.FC = () => {
                     const profit = (asset.price - asset.avgBuyPrice) * asset.owned;
                     const change = ((asset.price - asset.avgBuyPrice) / (asset.avgBuyPrice || 1)) * 100;
                     return (
-                      <div key={asset.id} className="glass-panel p-8 rounded-[3rem] border border-white/5 flex items-center justify-between shadow-xl">
+                      <div key={asset.id} className="glass-panel p-8 rounded-[3rem] border border-white/5 flex items-center justify-between shadow-xl group">
                          <div className="flex items-center gap-5">
                             <div className={`p-4 rounded-2xl ${asset.type === 'stock' ? 'bg-blue-500/10 text-blue-400' : 'bg-orange-500/10 text-orange-400'}`}>
                               {asset.type === 'stock' ? <TrendingUp size={24} /> : <Bitcoin size={24} />}
@@ -646,6 +687,10 @@ const App: React.FC = () => {
                             <div className="space-y-1">
                                <h4 className="text-xl font-black text-white italic uppercase tracking-tighter leading-none">{asset.name}</h4>
                                <p className="text-[10px] font-bold text-slate-500 uppercase">{asset.owned.toFixed(4)} Owned @ {formatCurrency(asset.avgBuyPrice)}</p>
+                               <div className="flex gap-2 mt-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <button onClick={() => sellAsset(asset.id, asset.owned)} className="px-3 py-1.5 bg-red-500/20 text-red-400 border border-red-500/30 rounded-lg text-[8px] font-black uppercase hover:bg-red-500 hover:text-white">Sell All</button>
+                                  <button onClick={() => buyAsset(asset.id, 1)} className="px-3 py-1.5 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-lg text-[8px] font-black uppercase hover:bg-emerald-500 hover:text-black">Buy +1</button>
+                               </div>
                             </div>
                          </div>
                          <div className="text-right">
@@ -673,24 +718,35 @@ const App: React.FC = () => {
                   const item = INITIAL_LIFESTYLE.find(i => i.id === ol.id);
                   if (!item) return null;
                   return (
-                    <div key={item.id} className="glass-panel rounded-[3rem] overflow-hidden border border-white/5 group shadow-xl transition-all hover:border-emerald-500/20">
-                      <div className="h-40 relative">
-                        <img src={item.image} className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity" alt={item.name} />
-                        <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0a] via-transparent to-transparent" />
-                        <div className="absolute top-4 right-4 bg-emerald-500 text-black px-3 py-1 rounded-full text-[10px] font-black uppercase shadow-lg">x{ol.count} Owned</div>
-                      </div>
-                      <div className="p-6 space-y-4">
-                        <h4 className="text-lg font-black text-white italic uppercase tracking-tighter">{item.name}</h4>
-                        <div className="grid grid-cols-2 gap-3">
-                           <div className="p-2.5 bg-white/5 rounded-xl border border-white/5 flex flex-col items-center">
-                              <span className="text-[8px] text-slate-500 font-black uppercase mb-1">Prestige</span>
-                              <span className="text-xs font-black text-white font-mono">+{item.prestige * ol.count}</span>
-                           </div>
-                           <div className="p-2.5 bg-white/5 rounded-xl border border-white/5 flex flex-col items-center">
-                              <span className="text-[8px] text-slate-500 font-black uppercase mb-1">Boost</span>
-                              <span className="text-xs font-black text-emerald-400 font-mono">x{item.multiplier.toFixed(2)}</span>
-                           </div>
+                    <div key={item.id} className="glass-panel rounded-[3rem] overflow-hidden border border-white/5 group shadow-xl transition-all hover:border-emerald-500/20 flex flex-col justify-between">
+                      <div>
+                        <div className="h-40 relative">
+                          <img src={item.image} className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity" alt={item.name} />
+                          <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0a] via-transparent to-transparent" />
+                          <div className="absolute top-4 right-4 bg-emerald-500 text-black px-3 py-1 rounded-full text-[10px] font-black uppercase shadow-lg">x{ol.count} Owned</div>
                         </div>
+                        <div className="p-6 space-y-4">
+                          <h4 className="text-lg font-black text-white italic uppercase tracking-tighter">{item.name}</h4>
+                          <div className="grid grid-cols-2 gap-3">
+                             <div className="p-2.5 bg-white/5 rounded-xl border border-white/5 flex flex-col items-center">
+                                <span className="text-[8px] text-slate-500 font-black uppercase mb-1">Prestige</span>
+                                <span className="text-xs font-black text-white font-mono">+{item.prestige * ol.count}</span>
+                             </div>
+                             <div className="p-2.5 bg-white/5 rounded-xl border border-white/5 flex flex-col items-center">
+                                <span className="text-[8px] text-slate-500 font-black uppercase mb-1">Boost</span>
+                                <span className="text-xs font-black text-emerald-400 font-mono">x{item.multiplier.toFixed(2)}</span>
+                             </div>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="p-6 pt-0">
+                         <button 
+                           onClick={() => sellShopItem(item.id)} 
+                           disabled={state.isPaused}
+                           className="w-full py-3 bg-red-500/10 border border-red-500/20 text-red-500 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-red-500 hover:text-white transition-all flex items-center justify-center gap-2"
+                         >
+                            <Trash2 size={12} /> Sell Unit: {formatCurrency(item.price * 0.8)}
+                         </button>
                       </div>
                     </div>
                   );
@@ -715,7 +771,7 @@ const App: React.FC = () => {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
               {['Retail', 'Restaurants', 'Media', 'Shipping', 'Sport', 'Hotels', 'Property', 'IT', 'Medicine', 'Resources', 'Finance', 'Airline', 'Transportation'].map((cat) => {
-                const stat = industryStats.find(s => s.name === cat) || { income: 0, count: 0, value: 0 };
+                const stat = industryStats.find(s => s.name === cat) || { income: 0, count: 0, instances: [] };
                 return (
                   <div key={cat} className="glass-panel p-8 rounded-[2.5rem] hover:border-emerald-500/50 transition-all cursor-pointer group shadow-xl" onClick={() => { setSelectedIndustry(cat as IndustryCategory); setActiveTab(GameTab.INDUSTRY_DETAIL); }}>
                     <div className="flex items-center justify-between mb-8">
