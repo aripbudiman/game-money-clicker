@@ -2,7 +2,7 @@
 export type IndustryCategory = 
   | 'Retail' | 'Restaurants' | 'Media' | 'Shipping' | 'Sport' 
   | 'Hotels' | 'Property' | 'IT' | 'Medicine' | 'Resources' 
-  | 'Finance' | 'Airline';
+  | 'Finance' | 'Airline' | 'Transportation';
 
 export interface Business {
   id: string;

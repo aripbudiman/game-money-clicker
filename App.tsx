@@ -8,7 +8,7 @@ import {
   Globe, ShieldAlert, BarChart3, TrendingDown, Layers,
   Trophy, Wallet, Percent, Tag, Play, Pause, Save, DollarSign, Activity,
   Info, Maximize2, ArrowUpCircle, Sparkles, ShoppingBag, Package,
-  LogOut, User, Lock, ArrowRightCircle
+  LogOut, User, Lock, ArrowRightCircle, Car
 } from 'lucide-react';
 import { 
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -29,7 +29,7 @@ import {
 const FB_URL = "https://mysql-ccf25-default-rtdb.asia-southeast1.firebasedatabase.app/";
 const SESSION_KEY = 'money_empire_active_user';
 
-const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316', '#6366f1', '#14b8a6', '#facc15', '#64748b'];
+const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316', '#6366f1', '#14b8a6', '#facc15', '#64748b', '#2dd4bf'];
 
 interface Particle {
   id: number;
@@ -138,6 +138,7 @@ const App: React.FC = () => {
     if (categories.has('Finance') && categories.has('Property')) bonus += 0.15;
     if (categories.has('Airline') && categories.has('Hotels')) bonus += 0.2;
     if (categories.has('IT') && categories.has('Medicine')) bonus += 0.25;
+    if (categories.has('Transportation') && categories.has('IT')) bonus += 0.1;
     return bonus;
   }, [state.ownedBusinesses]);
 
@@ -189,7 +190,7 @@ const App: React.FC = () => {
   const totalNetWorth = state.money + businessValue + stockValue + cryptoValue + inventoryValue;
 
   const industryStats = useMemo(() => {
-    const categories: IndustryCategory[] = ['Retail', 'Restaurants', 'Media', 'Shipping', 'Sport', 'Hotels', 'Property', 'IT', 'Medicine', 'Resources', 'Finance', 'Airline'];
+    const categories: IndustryCategory[] = ['Retail', 'Restaurants', 'Media', 'Shipping', 'Sport', 'Hotels', 'Property', 'IT', 'Medicine', 'Resources', 'Finance', 'Airline', 'Transportation'];
     return categories.map(cat => {
       const ownedInCat = state.ownedBusinesses.filter(ob => INITIAL_BUSINESSES.find(b => b.id === ob.id)?.category === cat);
       const income = ownedInCat.reduce((acc, ob) => {
@@ -201,7 +202,13 @@ const App: React.FC = () => {
         const bus = INITIAL_BUSINESSES.find(b => b.id === ob.id);
         return acc + (bus ? bus.basePrice * ob.count : 0);
       }, 0);
-      return { name: cat, income, count, value };
+      
+      const ownedCompanies = ownedInCat.map(ob => {
+        const bus = INITIAL_BUSINESSES.find(b => b.id === ob.id);
+        return { name: bus?.name || 'Unknown Entity', count: ob.count };
+      }).filter(c => c.count > 0);
+
+      return { name: cat, income, count, value, companies: ownedCompanies };
     }).filter(i => i.count > 0 || activeTab === GameTab.INDUSTRIES);
   }, [state.ownedBusinesses, globalMultiplier, activeTab]);
 
@@ -529,13 +536,25 @@ const App: React.FC = () => {
                   
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-6">
                     {industryStats.length > 0 ? industryStats.slice(0, 4).map((stat) => (
-                      <div key={stat.name} className="space-y-2">
-                        <div className="flex justify-between items-end">
-                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{stat.name}</span>
-                          <span className="text-xs font-black text-emerald-500 font-mono">+{formatCurrency(stat.income)}/s</span>
+                      <div key={stat.name} className="space-y-4 p-4 bg-white/5 rounded-[2rem] border border-white/5 transition-all hover:bg-white/10">
+                        <div className="space-y-2">
+                          <div className="flex justify-between items-end">
+                            <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">{stat.name}</span>
+                            <span className="text-xs font-black text-emerald-500 font-mono">+{formatCurrency(stat.income)}/s</span>
+                          </div>
+                          <div className="h-1.5 bg-black/40 rounded-full overflow-hidden border border-white/5">
+                            <div className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 rounded-full glow-emerald" style={{ width: `${Math.min(100, (stat.value / (businessValue || 1)) * 100)}%` }} />
+                          </div>
                         </div>
-                        <div className="h-2 bg-black/40 rounded-full overflow-hidden border border-white/5">
-                          <div className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 rounded-full glow-emerald" style={{ width: `${Math.min(100, (stat.value / (businessValue || 1)) * 100)}%` }} />
+
+                        {/* Company Details List */}
+                        <div className="pl-3 border-l border-emerald-500/20 space-y-1.5">
+                           {stat.companies.map((comp, idx) => (
+                             <div key={`${stat.name}-${idx}`} className="flex justify-between items-center text-[9px] font-bold uppercase tracking-tighter">
+                                <span className="text-slate-500 truncate max-w-[70%]">{comp.name}</span>
+                                <span className="text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded-md whitespace-nowrap">{comp.count} Units</span>
+                             </div>
+                           ))}
                         </div>
                       </div>
                     )) : (
@@ -824,12 +843,14 @@ const App: React.FC = () => {
         {/* Industry Sectors */}
         {activeTab === GameTab.INDUSTRIES && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 animate-in slide-in-from-bottom duration-500">
-            {['Retail', 'Restaurants', 'Media', 'Shipping', 'Sport', 'Hotels', 'Property', 'IT', 'Medicine', 'Resources', 'Finance', 'Airline'].map((cat) => {
+            {['Retail', 'Restaurants', 'Media', 'Shipping', 'Sport', 'Hotels', 'Property', 'IT', 'Medicine', 'Resources', 'Finance', 'Airline', 'Transportation'].map((cat) => {
               const stat = industryStats.find(s => s.name === cat) || { income: 0, count: 0, value: 0 };
               return (
                 <div key={cat} className="glass-panel p-8 rounded-[2.5rem] hover:border-emerald-500/50 transition-all cursor-pointer group shadow-xl" onClick={() => { setSelectedIndustry(cat as IndustryCategory); setActiveTab(GameTab.INDUSTRY_DETAIL); }}>
                   <div className="flex items-center justify-between mb-8">
-                    <div className="p-4 bg-white/5 rounded-2xl group-hover:bg-emerald-500 transition-all"><Layers className="w-8 h-8 text-emerald-400 group-hover:text-black transition-colors" /></div>
+                    <div className="p-4 bg-white/5 rounded-2xl group-hover:bg-emerald-500 transition-all">
+                      {cat === 'Transportation' ? <Car className="w-8 h-8 text-emerald-400 group-hover:text-black transition-colors" /> : <Layers className="w-8 h-8 text-emerald-400 group-hover:text-black transition-colors" />}
+                    </div>
                     <ChevronRight className="w-6 h-6 text-slate-700 group-hover:text-white" />
                   </div>
                   <h3 className="text-2xl font-black text-white italic uppercase">{cat}</h3>
