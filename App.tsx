@@ -16,13 +16,13 @@ import {
 
 // Firebase Imports
 import { initializeApp, getApp, getApps } from 'firebase/app';
-import { 
-  getAuth, 
-  onAuthStateChanged, 
-  signInWithEmailAndPassword, 
-  createUserWithEmailAndPassword, 
-  signOut, 
-  GoogleAuthProvider, 
+import {
+  getAuth,
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signOut,
+  GoogleAuthProvider,
   signInWithPopup,
   User as FirebaseUser
 } from 'firebase/auth';
@@ -48,13 +48,14 @@ interface Particle {
 
 // --- FIREBASE CONFIGURATION ---
 const firebaseConfig = {
-  apiKey: "AIzaSy...", // Ganti dengan API Key anda dari Firebase Console
-  authDomain: "mysql-ccf25.firebaseapp.com",
-  databaseURL: "https://mysql-ccf25-default-rtdb.asia-southeast1.firebasedatabase.app/",
-  projectId: "mysql-ccf25",
-  storageBucket: "mysql-ccf25.appspot.com",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
 let firebaseAvailable = false;
@@ -184,11 +185,11 @@ const App: React.FC = () => {
     stateRef.current = loadedState;
   };
 
-  const initializeNewPlayer = async (uid: string, offline: boolean, difficulty: Difficulty) => {
-    const newState = { 
-      ...defaultState, 
+  const initializeNewPlayer = async (uid: string, offline: boolean) => {
+    const newState = {
+      ...defaultState,
       username: user?.displayName || user?.email?.split('@')[0] || 'Tycoon',
-      difficulty: difficulty // Use explicit parameter
+      difficulty: loginDifficulty
     };
     if (offline) {
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(newState));
@@ -312,7 +313,32 @@ const App: React.FC = () => {
   const globalMultiplier = lifestyleMultiplier * synergyBonus * cycleMultiplier;
   const netIncome = Math.max(0, (businessesIncome * globalMultiplier) - maintenance);
 
-  // Game Loops
+  const businessesIncome = state.ownedBusinesses.reduce((acc, ob) => {
+    const bus = INITIAL_BUSINESSES.find(b => b.id === ob.businessId);
+    if (!bus) return acc;
+    return acc + calculateIncome(bus.baseIncome, ob.level);
+  }, 0) * globalMultiplier;
+
+  const maintenance = state.ownedBusinesses.reduce((acc, ob) => {
+    const bus = INITIAL_BUSINESSES.find(b => b.id === ob.businessId);
+    if (!bus) return acc;
+    return acc + bus.maintenance;
+  }, 0);
+
+  const netIncome = Math.max(0, businessesIncome - maintenance);
+
+  // Persistence and Game Loops
+  useEffect(() => {
+    if (!user) return;
+    const interval = setInterval(() => saveToCloud(), 10000);
+    const handleBeforeUnload = () => { saveToCloud(); };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [user]);
+
   useEffect(() => {
     if (!user || authLoading) return;
     const intervals: Record<Difficulty, number> = { 'Easy': 1000, 'Normal': 3000, 'Hard': 5000, 'Very Hard': 7000 };
@@ -571,13 +597,17 @@ const App: React.FC = () => {
                 <div className="flex items-start gap-3">
                   <AlertCircle className="text-red-500 shrink-0" size={18} />
                   <p className="text-[10px] font-bold text-red-400 leading-relaxed uppercase tracking-tighter">
-                    {authError.includes("api-key-not-valid") 
-                      ? "Security Protocol Error: Invalid Firebase Credentials. Local Archive Recommended." 
+                    {authError.includes("api-key-not-valid")
+                      ? "Security Protocol Error: Invalid Firebase Credentials. Proceeding without cloud sync is recommended."
                       : authError}
                   </p>
                 </div>
                 {!isOfflineMode && (
-                  <button type="button" onClick={startOfflineMode} className="flex items-center justify-center gap-2 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-500 rounded-xl text-[9px] font-black uppercase transition-all">
+                  <button
+                    type="button"
+                    onClick={startOfflineMode}
+                    className="flex items-center justify-center gap-2 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-500 rounded-xl text-[9px] font-black uppercase transition-all"
+                  >
                     <WifiOff size={14} /> Launch Offline Mode
                   </button>
                 )}
@@ -638,7 +668,7 @@ const App: React.FC = () => {
                 }`}>
                   {state.difficulty}
                 </span>
-                {isOfflineMode && <span className="ml-2 flex items-center gap-1 text-[8px] font-black text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded-full"><WifiOff size={10}/> LOCAL</span>}
+                {isOfflineMode && <span className="ml-2 flex items-center gap-1 text-[8px] font-black text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded-full"><WifiOff size={10} /> LOCAL ARCHIVE</span>}
               </div>
             </div>
           </div>
