@@ -1,7 +1,7 @@
 
-export type IndustryCategory =
-  | 'Retail' | 'Restaurants' | 'Media' | 'Shipping' | 'Sport'
-  | 'Hotels' | 'Property' | 'IT' | 'Medicine' | 'Resources'
+export type IndustryCategory = 
+  | 'Retail' | 'Restaurants' | 'Media' | 'Shipping' | 'Sport' 
+  | 'Hotels' | 'Property' | 'IT' | 'Medicine' | 'Resources' 
   | 'Finance' | 'Airline' | 'Transportation';
 
 export interface Business {
@@ -49,7 +49,6 @@ export interface OwnedLifestyle {
 }
 
 export type EconomicCycle = 'Boom' | 'Normal' | 'Recession' | 'Recovery';
-export type Difficulty = 'Easy' | 'Normal' | 'Hard' | 'Very Hard';
 
 export interface PlayerState {
   username?: string;
@@ -57,7 +56,6 @@ export interface PlayerState {
   totalEarned: number;
   xp: number;
   level: number;
-  difficulty: Difficulty;
   clickPower: number;
   clickLevel: number;
   ownedBusinesses: OwnedBusiness[];

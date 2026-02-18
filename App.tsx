@@ -1,27 +1,29 @@
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import {
-  Briefcase, TrendingUp, Bitcoin, Zap,
-  ArrowUpRight, ArrowDownRight, LayoutDashboard,
-  Trash2, Loader2, ChevronRight,
-  ArrowLeft, Building2, LineChart as LineIcon,
-  Globe, Layers, Percent, Play, Pause, Save, Activity,
-  ShoppingBag, Package, LogOut, User, ArrowRightCircle,
-  Car, Box, ArrowUp, DollarSign as DollarIcon
+import { 
+  Coins, Briefcase, TrendingUp, Bitcoin, Home, Zap, 
+  ArrowUpRight, ArrowDownRight, Smartphone, LayoutDashboard, 
+  RefreshCcw, Trash2, CloudLightning, Loader2, ChevronRight, 
+  ArrowLeft, Building2, PieChart as PieIcon, LineChart as LineIcon, 
+  Globe, ShieldAlert, BarChart3, TrendingDown, Layers,
+  Trophy, Wallet, Percent, Tag, Play, Pause, Save, DollarSign, Activity,
+  Info, Maximize2, ArrowUpCircle, Sparkles, ShoppingBag, Package,
+  LogOut, User, Lock, ArrowRightCircle, Car, Box, Heart, ArrowUp, DollarSign as DollarIcon
 } from 'lucide-react';
-import {
-  ResponsiveContainer, AreaChart, Area
+import { 
+  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
+  AreaChart, Area, PieChart, Pie, Cell, Legend
 } from 'recharts';
 
-import {
-  INITIAL_BUSINESSES, INITIAL_STOCKS, INITIAL_CRYPTO, INITIAL_LIFESTYLE
+import { 
+  INITIAL_BUSINESSES, INITIAL_STOCKS, INITIAL_CRYPTO, INITIAL_LIFESTYLE 
 } from './constants';
-import {
-  Asset, PlayerState, GameTab,
-  IndustryCategory, OwnedBusiness, EconomicCycle, OwnedLifestyle, Difficulty
+import { 
+  Business, Asset, LifestyleItem, PlayerState, GameTab, 
+  IndustryCategory, OwnedBusiness, EconomicCycle, OwnedLifestyle 
 } from './types';
-import {
-  formatCurrency, formatFullCurrency, calculateNextPrice, calculateIncome, calculateUpgradePrice
+import { 
+  formatCurrency, formatFullCurrency, calculateNextPrice, calculateIncome, calculateUpgradePrice 
 } from './utils/format';
 
 const FB_URL = "https://mysql-ccf25-default-rtdb.asia-southeast1.firebasedatabase.app/";
@@ -46,14 +48,12 @@ const App: React.FC = () => {
   const [selectedIndustry, setSelectedIndustry] = useState<IndustryCategory | null>(null);
   const [particles, setParticles] = useState<Particle[]>([]);
   const [tradeQuantities, setTradeQuantities] = useState<Record<string, string>>({});
-  const [loginDifficulty, setLoginDifficulty] = useState<Difficulty>('Normal');
 
   const defaultState: PlayerState = {
     money: 100,
     totalEarned: 0,
     xp: 0,
     level: 1,
-    difficulty: 'Easy',
     clickPower: 1,
     clickLevel: 1,
     ownedBusinesses: [],
@@ -72,26 +72,15 @@ const App: React.FC = () => {
     stateRef.current = state;
   }, [state]);
 
-  const loadProgress = async (username: string, manualDifficulty?: Difficulty) => {
+  const loadProgress = async (username: string) => {
     setLoading(true);
     try {
       const response = await fetch(`${FB_URL}players/${username.toLowerCase()}.json`);
       const data = await response.json();
-
-      let finalDifficulty: Difficulty = 'Normal';
-      if (manualDifficulty) {
-        finalDifficulty = manualDifficulty;
-      } else if (data && data.difficulty) {
-        finalDifficulty = data.difficulty;
-      } else {
-        finalDifficulty = 'Easy';
-      }
-
       if (data) {
         const loadedState = {
           ...defaultState,
           ...data,
-          difficulty: finalDifficulty,
           username,
           assets: [...INITIAL_STOCKS, ...INITIAL_CRYPTO].map(a => {
             const saved = data.assets?.find((s: any) => s.id === a.id);
@@ -101,16 +90,10 @@ const App: React.FC = () => {
         };
         setState(loadedState);
         stateRef.current = loadedState;
-
-        // If we manually set a difficulty or the cloud was missing it, force a sync soon
-        if (manualDifficulty || !data.difficulty) {
-          saveToCloud(loadedState);
-        }
       } else {
-        const newState = { ...defaultState, username, difficulty: finalDifficulty };
+        const newState = { ...defaultState, username };
         setState(newState);
         stateRef.current = newState;
-        saveToCloud(newState);
       }
       setActiveUser(username);
       localStorage.setItem(SESSION_KEY, username);
@@ -125,7 +108,7 @@ const App: React.FC = () => {
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     if (!loginInput.trim()) return;
-    loadProgress(loginInput.trim(), loginDifficulty);
+    loadProgress(loginInput.trim());
   };
 
   const handleLogout = async () => {
@@ -147,7 +130,7 @@ const App: React.FC = () => {
   const saveToCloud = async (overrideState?: PlayerState) => {
     const user = activeUser || stateRef.current.username;
     if (!user) return;
-
+    
     setSyncing(true);
     const stateToSave = overrideState || stateRef.current;
     try {
@@ -206,7 +189,7 @@ const App: React.FC = () => {
   }, 0);
 
   const netIncome = Math.max(0, businessesIncome - maintenance);
-
+  
   const calculateBusinessResale = (busId: string, level: number) => {
     const bus = INITIAL_BUSINESSES.find(b => b.id === busId);
     if (!bus) return 0;
@@ -239,14 +222,14 @@ const App: React.FC = () => {
         return acc + (bus ? calculateIncome(bus.baseIncome, ob.level) : 0);
       }, 0) * globalMultiplier;
       const count = ownedInCat.length;
-
+      
       const instances = ownedInCat.map(ob => {
         const bus = INITIAL_BUSINESSES.find(b => b.id === ob.businessId);
-        return {
+        return { 
           instanceId: ob.instanceId,
           businessId: ob.businessId,
-          name: bus?.name || 'Unknown Entity',
-          level: ob.level,
+          name: bus?.name || 'Unknown Entity', 
+          level: ob.level, 
           income: bus ? calculateIncome(bus.baseIncome, ob.level) * globalMultiplier : 0,
           upgradePrice: bus ? calculateUpgradePrice(bus.basePrice, ob.level) : 0,
           resaleValue: calculateBusinessResale(ob.businessId, ob.level)
@@ -259,21 +242,12 @@ const App: React.FC = () => {
 
   // Income loop
   useEffect(() => {
-    const intervals: Record<string, number> = {
-      'Easy': 1000,
-      'Normal': 3000,
-      'Hard': 5000,
-      'Very Hard': 7000
-    };
-    const intervalTime = intervals[state.difficulty] || 1000;
-
     const interval = setInterval(() => {
       if (state.isPaused || !activeUser) return;
       setState(prev => {
         const incomePerSec = businessesIncome - maintenance;
-        const multiplier = intervalTime / 1000;
-        const added = Math.max(0, incomePerSec * multiplier);
-        const newXp = prev.xp + added * 0.0001 + 0.01 * multiplier;
+        const added = Math.max(0, incomePerSec);
+        const newXp = prev.xp + added * 0.0001 + 0.01;
         const newLevel = Math.floor(Math.sqrt(newXp / 10)) + 1;
         return {
           ...prev,
@@ -283,9 +257,9 @@ const App: React.FC = () => {
           level: newLevel > prev.level ? newLevel : prev.level
         };
       });
-    }, intervalTime);
+    }, 1000);
     return () => clearInterval(interval);
-  }, [businessesIncome, maintenance, state.isPaused, activeUser, state.difficulty]);
+  }, [businessesIncome, maintenance, state.isPaused, activeUser]);
 
   // Market loop
   useEffect(() => {
@@ -304,13 +278,13 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, [state.isPaused, activeUser]);
 
-  // IMPROVED AUTO-SAVE: Triggers every 25 seconds without resetting on state change
+  // IMPROVED AUTO-SAVE: Triggers every 5 seconds without resetting on state change
   useEffect(() => {
     if (!activeUser) return;
-
+    
     const interval = setInterval(() => {
       saveToCloud();
-    }, 25000); // 25 seconds auto-save frequency
+    }, 5000); // 5 seconds auto-save frequency
 
     const handleBeforeUnload = () => {
       saveToCloud();
@@ -334,17 +308,17 @@ const App: React.FC = () => {
       const currentCountOfType = prev.ownedBusinesses.filter(ob => ob.businessId === businessId).length;
       const cost = calculateNextPrice(bus.basePrice, currentCountOfType);
       if (prev.money < cost) return prev;
-
+      
       const newInstance: OwnedBusiness = {
         instanceId: `inst_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
         businessId: businessId,
         level: 0
       };
 
-      return {
-        ...prev,
-        money: prev.money - cost,
-        ownedBusinesses: [...prev.ownedBusinesses, newInstance]
+      return { 
+        ...prev, 
+        money: prev.money - cost, 
+        ownedBusinesses: [...prev.ownedBusinesses, newInstance] 
       };
     });
   };
@@ -365,7 +339,7 @@ const App: React.FC = () => {
   const upgradeBusiness = (instanceId: string) => {
     setState(prev => {
       const instance = prev.ownedBusinesses.find(ob => ob.instanceId === instanceId);
-      if (!instance || instance.level >= 10) return prev;
+      if (!instance) return prev;
       const bus = INITIAL_BUSINESSES.find(b => b.id === instance.businessId);
       if (!bus) return prev;
       const cost = calculateUpgradePrice(bus.basePrice, instance.level);
@@ -445,14 +419,14 @@ const App: React.FC = () => {
       let newInventory = [...prev.inventory];
       let existingIndex = newInventory.findIndex(i => i.id === id);
       if (existingIndex === -1 || newInventory[existingIndex].count <= 0) return prev;
-
+      
       const count = newInventory[existingIndex].count;
       if (count === 1) {
         newInventory.splice(existingIndex, 1);
       } else {
         newInventory[existingIndex].count -= 1;
       }
-
+      
       const resaleValue = item.price * 0.8;
       return { ...prev, money: prev.money + resaleValue, inventory: newInventory };
     });
@@ -475,7 +449,7 @@ const App: React.FC = () => {
       <div className="min-h-screen bg-[#050505] flex items-center justify-center p-6 relative overflow-hidden">
         <div className="absolute top-[-10%] left-[-10%] w-1/2 h-1/2 bg-emerald-500/10 rounded-full blur-[120px]" />
         <div className="absolute bottom-[-10%] right-[-10%] w-1/2 h-1/2 bg-blue-500/10 rounded-full blur-[120px]" />
-
+        
         <div className="w-full max-w-lg glass-panel rounded-[3rem] p-12 border border-white/5 shadow-[0_0_100px_rgba(16,185,129,0.05)] relative z-10 space-y-10">
           <div className="text-center space-y-4">
             <div className="w-20 h-20 bg-emerald-500 rounded-3xl mx-auto flex items-center justify-center shadow-emerald-500/20 shadow-xl mb-6">
@@ -492,9 +466,9 @@ const App: React.FC = () => {
                 <div className="absolute inset-y-0 left-6 flex items-center text-slate-500 group-focus-within:text-emerald-500 transition-colors">
                   <User size={20} />
                 </div>
-                <input
-                  type="text"
-                  placeholder="Enter Username"
+                <input 
+                  type="text" 
+                  placeholder="Enter Username" 
                   value={loginInput}
                   onChange={(e) => setLoginInput(e.target.value)}
                   className="w-full bg-black/50 border border-white/5 rounded-2xl py-5 pl-16 pr-6 text-white font-bold tracking-tight focus:border-emerald-500/50 outline-none transition-all"
@@ -502,25 +476,9 @@ const App: React.FC = () => {
               </div>
             </div>
 
-            <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-4">Campaign Difficulty</label>
-              <div className="grid grid-cols-2 gap-3">
-                {(['Easy', 'Normal', 'Hard', 'Very Hard'] as Difficulty[]).map((d) => (
-                  <button
-                    key={d}
-                    type="button"
-                    onClick={() => setLoginDifficulty(d)}
-                    className={`py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border ${loginDifficulty === d ? 'bg-emerald-500 text-black border-emerald-400' : 'bg-white/5 text-slate-500 border-white/5 hover:border-white/10'}`}
-                  >
-                    {d}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading || !loginInput.trim()}
+            <button 
+              type="submit" 
+              disabled={loading || !loginInput.trim()} 
               className="w-full py-5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-white/5 disabled:text-slate-700 text-white rounded-2xl font-black uppercase tracking-widest transition-all shadow-xl shadow-emerald-900/10 flex items-center justify-center gap-3 active:scale-[0.98]"
             >
               {loading ? <Loader2 className="w-6 h-6 animate-spin" /> : <>Initiate Empire <ArrowRightCircle size={20} /></>}
@@ -555,14 +513,6 @@ const App: React.FC = () => {
                 {state.username}
                 <span className="w-1 h-1 bg-slate-800 rounded-full mx-1" />
                 Level {state.level}
-                <span className="w-1 h-1 bg-slate-800 rounded-full mx-1" />
-                <span className={`px-2 py-0.5 rounded-full text-[8px] font-black uppercase ${state.difficulty === 'Easy' ? 'bg-blue-500/20 text-blue-400' :
-                  state.difficulty === 'Normal' ? 'bg-emerald-500/20 text-emerald-400' :
-                    state.difficulty === 'Hard' ? 'bg-orange-500/20 text-orange-400' :
-                      'bg-red-500/20 text-red-400'
-                  }`}>
-                  {state.difficulty}
-                </span>
               </div>
             </div>
           </div>
@@ -603,7 +553,7 @@ const App: React.FC = () => {
       )}
 
       <main className="max-w-7xl mx-auto p-4 md:p-8 space-y-12 animate-in fade-in duration-500">
-
+        
         {/* DASHBOARD TAB */}
         {activeTab === GameTab.DASHBOARD && (
           <div className="space-y-12">
@@ -634,9 +584,9 @@ const App: React.FC = () => {
                 </div>
               </div>
               <div className="w-full max-w-lg glass-panel rounded-[2.5rem] p-8 border border-white/5 shadow-2xl">
-                <button onClick={upgradeClickPower} disabled={state.money < Math.floor(200 * Math.pow(1.8, state.clickLevel - 1)) || state.clickLevel >= 20 || state.isPaused} className={`w-full py-5 rounded-2xl font-black uppercase tracking-widest text-xs transition-all ${state.money >= Math.floor(200 * Math.pow(1.8, state.clickLevel - 1)) && state.clickLevel < 20 && !state.isPaused ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-900/10' : 'bg-white/5 text-slate-700 cursor-not-allowed'}`}>
-                  Upgrade Click: {formatCurrency(Math.floor(200 * Math.pow(1.8, state.clickLevel - 1)))}
-                </button>
+                 <button onClick={upgradeClickPower} disabled={state.money < Math.floor(200 * Math.pow(1.8, state.clickLevel - 1)) || state.clickLevel >= 20 || state.isPaused} className={`w-full py-5 rounded-2xl font-black uppercase tracking-widest text-xs transition-all ${state.money >= Math.floor(200 * Math.pow(1.8, state.clickLevel - 1)) && state.clickLevel < 20 && !state.isPaused ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-900/10' : 'bg-white/5 text-slate-700 cursor-not-allowed'}`}>
+                    Upgrade Click: {formatCurrency(Math.floor(200 * Math.pow(1.8, state.clickLevel - 1)))}
+                 </button>
               </div>
             </div>
           </div>
@@ -690,7 +640,7 @@ const App: React.FC = () => {
                               <div className="text-[9px] font-bold text-slate-600 uppercase">Profit Flow</div>
                             </div>
                           </div>
-
+                          
                           <div className="grid grid-cols-2 gap-3 mb-2">
                             <div className="px-4 py-2 bg-black/20 rounded-xl border border-white/5">
                               <div className="text-[8px] font-black text-slate-500 uppercase mb-0.5">Upgrade Cost</div>
@@ -703,14 +653,14 @@ const App: React.FC = () => {
                           </div>
 
                           <div className="grid grid-cols-2 gap-3">
-                            <button
+                            <button 
                               onClick={() => upgradeBusiness(inst.instanceId)}
-                              disabled={state.money < inst.upgradePrice || inst.level >= 10 || state.isPaused}
-                              className={`py-3 rounded-2xl flex items-center justify-center gap-2 text-[9px] font-black uppercase tracking-widest transition-all ${state.money >= inst.upgradePrice && inst.level < 10 && !state.isPaused ? 'bg-emerald-500 text-black shadow-lg hover:bg-emerald-400' : 'bg-white/5 text-slate-700 cursor-not-allowed'}`}
+                              disabled={state.money < inst.upgradePrice || state.isPaused}
+                              className={`py-3 rounded-2xl flex items-center justify-center gap-2 text-[9px] font-black uppercase tracking-widest transition-all ${state.money >= inst.upgradePrice && !state.isPaused ? 'bg-emerald-500 text-black shadow-lg hover:bg-emerald-400' : 'bg-white/5 text-slate-700 cursor-not-allowed'}`}
                             >
-                              <ArrowUp size={12} /> {inst.level >= 10 ? 'MAX' : 'Upgrade'}
+                              <ArrowUp size={12} /> Upgrade
                             </button>
-                            <button
+                            <button 
                               onClick={() => sellBusinessInstance(inst.instanceId)}
                               disabled={state.isPaused}
                               className="py-3 rounded-2xl flex items-center justify-center gap-2 text-[9px] font-black uppercase tracking-widest transition-all bg-red-500/10 border border-red-500/20 text-red-500 hover:bg-red-500 hover:text-white"
@@ -735,18 +685,18 @@ const App: React.FC = () => {
             {inventorySubTab === 'portfolio' && (
               <div className="space-y-10">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <div className="glass-panel p-6 rounded-[2.5rem] text-center border-b-2 border-b-yellow-500 shadow-xl">
-                    <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Stock Holdings</div>
-                    <div className="text-3xl font-black text-white font-mono">{formatCurrency(stockValue)}</div>
-                  </div>
-                  <div className="glass-panel p-6 rounded-[2.5rem] text-center border-b-2 border-b-orange-500 shadow-xl">
-                    <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Crypto Reserves</div>
-                    <div className="text-3xl font-black text-white font-mono">{formatCurrency(cryptoValue)}</div>
-                  </div>
-                  <div className="glass-panel p-6 rounded-[2.5rem] text-center border-b-2 border-b-emerald-500 shadow-xl">
-                    <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Total Market Value</div>
-                    <div className="text-3xl font-black text-emerald-400 font-mono">{formatCurrency(stockValue + cryptoValue)}</div>
-                  </div>
+                   <div className="glass-panel p-6 rounded-[2.5rem] text-center border-b-2 border-b-yellow-500 shadow-xl">
+                      <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Stock Holdings</div>
+                      <div className="text-3xl font-black text-white font-mono">{formatCurrency(stockValue)}</div>
+                   </div>
+                   <div className="glass-panel p-6 rounded-[2.5rem] text-center border-b-2 border-b-orange-500 shadow-xl">
+                      <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Crypto Reserves</div>
+                      <div className="text-3xl font-black text-white font-mono">{formatCurrency(cryptoValue)}</div>
+                   </div>
+                   <div className="glass-panel p-6 rounded-[2.5rem] text-center border-b-2 border-b-emerald-500 shadow-xl">
+                      <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Total Market Value</div>
+                      <div className="text-3xl font-black text-emerald-400 font-mono">{formatCurrency(stockValue + cryptoValue)}</div>
+                   </div>
                 </div>
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   {state.assets.filter(a => a.owned > 0).map(asset => {
@@ -754,25 +704,25 @@ const App: React.FC = () => {
                     const change = ((asset.price - asset.avgBuyPrice) / (asset.avgBuyPrice || 1)) * 100;
                     return (
                       <div key={asset.id} className="glass-panel p-8 rounded-[3rem] border border-white/5 flex items-center justify-between shadow-xl group">
-                        <div className="flex items-center gap-5">
-                          <div className={`p-4 rounded-2xl ${asset.type === 'stock' ? 'bg-blue-500/10 text-blue-400' : 'bg-orange-500/10 text-orange-400'}`}>
-                            {asset.type === 'stock' ? <TrendingUp size={24} /> : <Bitcoin size={24} />}
-                          </div>
-                          <div className="space-y-1">
-                            <h4 className="text-xl font-black text-white italic uppercase tracking-tighter leading-none">{asset.name}</h4>
-                            <p className="text-[10px] font-bold text-slate-500 uppercase">{asset.owned.toFixed(4)} Owned @ {formatCurrency(asset.avgBuyPrice)}</p>
-                            <div className="flex gap-2 mt-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <button onClick={() => sellAsset(asset.id, asset.owned)} className="px-3 py-1.5 bg-red-500/20 text-red-400 border border-red-500/30 rounded-lg text-[8px] font-black uppercase hover:bg-red-500 hover:text-white">Sell All</button>
-                              <button onClick={() => buyAsset(asset.id, 1)} className="px-3 py-1.5 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-lg text-[8px] font-black uppercase hover:bg-emerald-500 hover:text-black">Buy +1</button>
+                         <div className="flex items-center gap-5">
+                            <div className={`p-4 rounded-2xl ${asset.type === 'stock' ? 'bg-blue-500/10 text-blue-400' : 'bg-orange-500/10 text-orange-400'}`}>
+                              {asset.type === 'stock' ? <TrendingUp size={24} /> : <Bitcoin size={24} />}
                             </div>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <div className="text-2xl font-black text-white font-mono">{formatCurrency(asset.price * asset.owned)}</div>
-                          <div className={`text-[10px] font-black uppercase flex items-center justify-end gap-1 ${profit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                            {profit >= 0 ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />} {formatCurrency(Math.abs(profit))} ({Math.abs(change).toFixed(2)}%)
-                          </div>
-                        </div>
+                            <div className="space-y-1">
+                               <h4 className="text-xl font-black text-white italic uppercase tracking-tighter leading-none">{asset.name}</h4>
+                               <p className="text-[10px] font-bold text-slate-500 uppercase">{asset.owned.toFixed(4)} Owned @ {formatCurrency(asset.avgBuyPrice)}</p>
+                               <div className="flex gap-2 mt-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <button onClick={() => sellAsset(asset.id, asset.owned)} className="px-3 py-1.5 bg-red-500/20 text-red-400 border border-red-500/30 rounded-lg text-[8px] font-black uppercase hover:bg-red-500 hover:text-white">Sell All</button>
+                                  <button onClick={() => buyAsset(asset.id, 1)} className="px-3 py-1.5 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-lg text-[8px] font-black uppercase hover:bg-emerald-500 hover:text-black">Buy +1</button>
+                               </div>
+                            </div>
+                         </div>
+                         <div className="text-right">
+                            <div className="text-2xl font-black text-white font-mono">{formatCurrency(asset.price * asset.owned)}</div>
+                            <div className={`text-[10px] font-black uppercase flex items-center justify-end gap-1 ${profit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                               {profit >= 0 ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />} {formatCurrency(Math.abs(profit))} ({Math.abs(change).toFixed(2)}%)
+                            </div>
+                         </div>
                       </div>
                     );
                   })}
@@ -802,25 +752,25 @@ const App: React.FC = () => {
                         <div className="p-6 space-y-4">
                           <h4 className="text-lg font-black text-white italic uppercase tracking-tighter">{item.name}</h4>
                           <div className="grid grid-cols-2 gap-3">
-                            <div className="p-2.5 bg-white/5 rounded-xl border border-white/5 flex flex-col items-center">
-                              <span className="text-[8px] text-slate-500 font-black uppercase mb-1">Prestige</span>
-                              <span className="text-xs font-black text-white font-mono">+{item.prestige * ol.count}</span>
-                            </div>
-                            <div className="p-2.5 bg-white/5 rounded-xl border border-white/5 flex flex-col items-center">
-                              <span className="text-[8px] text-slate-500 font-black uppercase mb-1">Boost</span>
-                              <span className="text-xs font-black text-emerald-400 font-mono">x{item.multiplier.toFixed(2)}</span>
-                            </div>
+                             <div className="p-2.5 bg-white/5 rounded-xl border border-white/5 flex flex-col items-center">
+                                <span className="text-[8px] text-slate-500 font-black uppercase mb-1">Prestige</span>
+                                <span className="text-xs font-black text-white font-mono">+{item.prestige * ol.count}</span>
+                             </div>
+                             <div className="p-2.5 bg-white/5 rounded-xl border border-white/5 flex flex-col items-center">
+                                <span className="text-[8px] text-slate-500 font-black uppercase mb-1">Boost</span>
+                                <span className="text-xs font-black text-emerald-400 font-mono">x{item.multiplier.toFixed(2)}</span>
+                             </div>
                           </div>
                         </div>
                       </div>
                       <div className="p-6 pt-0">
-                        <button
-                          onClick={() => sellShopItem(item.id)}
-                          disabled={state.isPaused}
-                          className="w-full py-3 bg-red-500/10 border border-red-500/20 text-red-500 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-red-500 hover:text-white transition-all flex items-center justify-center gap-2"
-                        >
-                          <Trash2 size={12} /> Sell Unit: {formatCurrency(item.price * 0.8)}
-                        </button>
+                         <button 
+                           onClick={() => sellShopItem(item.id)} 
+                           disabled={state.isPaused}
+                           className="w-full py-3 bg-red-500/10 border border-red-500/20 text-red-500 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-red-500 hover:text-white transition-all flex items-center justify-center gap-2"
+                         >
+                            <Trash2 size={12} /> Sell Unit: {formatCurrency(item.price * 0.8)}
+                         </button>
                       </div>
                     </div>
                   );
@@ -839,7 +789,7 @@ const App: React.FC = () => {
         {/* INDUSTRIES TAB */}
         {activeTab === GameTab.INDUSTRIES && (
           <div className="space-y-12 animate-in slide-in-from-bottom duration-500">
-            <div className="space-y-2">
+             <div className="space-y-2">
               <p className="text-xs font-black text-emerald-500 uppercase tracking-[0.3em]">Corporate Expansion</p>
               <h2 className="text-6xl font-black text-white italic uppercase tracking-tighter leading-none">Global <span className="text-emerald-500">Sectors</span></h2>
             </div>
@@ -856,8 +806,8 @@ const App: React.FC = () => {
                     </div>
                     <h3 className="text-2xl font-black text-white italic uppercase tracking-tighter">{cat}</h3>
                     <div className="flex justify-between items-end mt-10">
-                      <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Active Units: {stat.count}</span>
-                      <span className="text-emerald-400 font-black font-mono">+{formatCurrency(stat.income)}/s</span>
+                       <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Active Units: {stat.count}</span>
+                       <span className="text-emerald-400 font-black font-mono">+{formatCurrency(stat.income)}/s</span>
                     </div>
                   </div>
                 );
@@ -869,7 +819,7 @@ const App: React.FC = () => {
         {/* Market Tabs */}
         {(activeTab === GameTab.STOCKS || activeTab === GameTab.CRYPTO) && (
           <div className="space-y-10 animate-in slide-in-from-right duration-500">
-            <div className="space-y-2">
+             <div className="space-y-2">
               <p className="text-xs font-black text-emerald-500 uppercase tracking-[0.3em]">Capital Markets</p>
               <h2 className="text-5xl font-black text-white italic uppercase tracking-tighter">{activeTab === GameTab.STOCKS ? 'Equity' : 'Liquidity'} <span className="text-emerald-500">Terminal</span></h2>
             </div>
