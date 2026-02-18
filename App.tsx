@@ -24,6 +24,7 @@ import {
   signOut,
   GoogleAuthProvider,
   signInWithPopup,
+  updateProfile,
   User as FirebaseUser
 } from 'firebase/auth';
 import { getDatabase, ref, set, get } from 'firebase/database';
@@ -83,6 +84,7 @@ const App: React.FC = () => {
   const [isRegistering, setIsRegistering] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [username, setUsername] = useState('');
   const [loginDifficulty, setLoginDifficulty] = useState<Difficulty>('Normal');
   const [authError, setAuthError] = useState<string | null>(null);
 
@@ -117,10 +119,12 @@ const App: React.FC = () => {
   }, [state]);
 
   const loginDifficultyRef = useRef<Difficulty>(loginDifficulty);
+  const usernameRef = useRef<string>(username);
 
   useEffect(() => {
     loginDifficultyRef.current = loginDifficulty;
-  }, [loginDifficulty]);
+    usernameRef.current = username;
+  }, [loginDifficulty, username]);
 
   // Auth State Listener
   useEffect(() => {
@@ -194,7 +198,7 @@ const App: React.FC = () => {
   const initializeNewPlayer = async (uid: string, offline: boolean) => {
     const newState = {
       ...defaultState,
-      username: user?.displayName || user?.email?.split('@')[0] || 'Tycoon',
+      username: usernameRef.current || user?.displayName || user?.email?.split('@')[0] || 'Tycoon',
       difficulty: loginDifficultyRef.current
     };
     if (offline) {
@@ -240,7 +244,10 @@ const App: React.FC = () => {
 
     try {
       if (isRegistering) {
-        await createUserWithEmailAndPassword(auth, email, password);
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        if (username) {
+          await updateProfile(userCredential.user, { displayName: username });
+        }
       } else {
         await signInWithEmailAndPassword(auth, email, password);
       }
@@ -546,6 +553,18 @@ const App: React.FC = () => {
 
           <form onSubmit={handleAuth} className="space-y-6">
             <div className="space-y-4">
+              {isRegistering && (
+                <div className="relative group animate-in slide-in-from-top-2 duration-300">
+                  <User className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-600 group-focus-within:text-emerald-500 transition-colors" size={18} />
+                  <input
+                    type="text" required={isRegistering}
+                    placeholder="Tycoon Name"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    className="w-full bg-black/50 border border-white/5 rounded-2xl py-5 pl-16 pr-6 text-white font-bold tracking-tight focus:border-emerald-500/50 outline-none transition-all"
+                  />
+                </div>
+              )}
               <div className="relative group">
                 <Mail className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-600 group-focus-within:text-emerald-500 transition-colors" size={18} />
                 <input
