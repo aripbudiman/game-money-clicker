@@ -116,6 +116,12 @@ const App: React.FC = () => {
     stateRef.current = state;
   }, [state]);
 
+  const loginDifficultyRef = useRef<Difficulty>(loginDifficulty);
+
+  useEffect(() => {
+    loginDifficultyRef.current = loginDifficulty;
+  }, [loginDifficulty]);
+
   // Auth State Listener
   useEffect(() => {
     let unsubscribe: any;
@@ -151,7 +157,7 @@ const App: React.FC = () => {
         if (localData) {
           applyState(JSON.parse(localData));
         } else {
-          await initializeNewPlayer(uid, true, loginDifficulty);
+          await initializeNewPlayer(uid, true);
         }
       } else if (db) {
         const snapshot = await get(ref(db, `players/${uid}`));
@@ -159,7 +165,7 @@ const App: React.FC = () => {
           applyState(snapshot.val());
         } else {
           // Pass the CURRENT loginDifficulty state specifically to avoid race condition
-          await initializeNewPlayer(uid, false, loginDifficulty);
+          await initializeNewPlayer(uid, false);
         }
       }
     } catch (e) {
@@ -189,7 +195,7 @@ const App: React.FC = () => {
     const newState = {
       ...defaultState,
       username: user?.displayName || user?.email?.split('@')[0] || 'Tycoon',
-      difficulty: loginDifficulty
+      difficulty: loginDifficultyRef.current
     };
     if (offline) {
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(newState));
@@ -272,17 +278,7 @@ const App: React.FC = () => {
   };
 
   // Logic Helpers
-  const businessesIncome = state.ownedBusinesses.reduce((acc, ob) => {
-    const bus = INITIAL_BUSINESSES.find(b => b.id === ob.businessId);
-    if (!bus) return acc;
-    return acc + calculateIncome(bus.baseIncome, ob.level);
-  }, 0);
 
-  const maintenance = state.ownedBusinesses.reduce((acc, ob) => {
-    const bus = INITIAL_BUSINESSES.find(b => b.id === ob.businessId);
-    if (!bus) return acc;
-    return acc + bus.maintenance;
-  }, 0);
 
   const synergyBonus = useMemo(() => {
     let bonus = 1;
@@ -311,7 +307,7 @@ const App: React.FC = () => {
   }, [state.inventory]);
 
   const globalMultiplier = lifestyleMultiplier * synergyBonus * cycleMultiplier;
-  const netIncome = Math.max(0, (businessesIncome * globalMultiplier) - maintenance);
+
 
   const businessesIncome = state.ownedBusinesses.reduce((acc, ob) => {
     const bus = INITIAL_BUSINESSES.find(b => b.id === ob.businessId);
@@ -346,7 +342,7 @@ const App: React.FC = () => {
     const interval = setInterval(() => {
       if (state.isPaused) return;
       setState(prev => {
-        const incomePerSec = (businessesIncome * globalMultiplier) - maintenance;
+        const incomePerSec = businessesIncome - maintenance;
         const multiplier = intervalTime / 1000;
         const added = Math.max(0, incomePerSec * multiplier);
         const newXp = prev.xp + added * 0.0001 + 0.01 * multiplier;
@@ -629,7 +625,7 @@ const App: React.FC = () => {
           </div>
 
           {!isOfflineMode && (
-             <button onClick={startOfflineMode} className="w-full py-4 bg-white/5 border border-white/5 rounded-2xl text-amber-500 font-black uppercase tracking-widest text-[10px] flex items-center justify-center gap-3 hover:bg-amber-500/10 transition-all active:scale-95">
+            <button onClick={startOfflineMode} className="w-full py-4 bg-white/5 border border-white/5 rounded-2xl text-amber-500 font-black uppercase tracking-widest text-[10px] flex items-center justify-center gap-3 hover:bg-amber-500/10 transition-all active:scale-95">
               <Database size={16} /> Instant Local Archive (No Config)
             </button>
           )}
@@ -660,12 +656,11 @@ const App: React.FC = () => {
                 <span className="w-1 h-1 bg-slate-800 rounded-full mx-1" />
                 Level {state.level}
                 <span className="w-1 h-1 bg-slate-800 rounded-full mx-1" />
-                <span className={`px-2 py-0.5 rounded-full text-[8px] font-black uppercase ${
-                  state.difficulty === 'Easy' ? 'bg-blue-500/20 text-blue-400' :
+                <span className={`px-2 py-0.5 rounded-full text-[8px] font-black uppercase ${state.difficulty === 'Easy' ? 'bg-blue-500/20 text-blue-400' :
                   state.difficulty === 'Normal' ? 'bg-emerald-500/20 text-emerald-400' :
-                  state.difficulty === 'Hard' ? 'bg-orange-500/20 text-orange-400' :
-                  'bg-red-500/20 text-red-400'
-                }`}>
+                    state.difficulty === 'Hard' ? 'bg-orange-500/20 text-orange-400' :
+                      'bg-red-500/20 text-red-400'
+                  }`}>
                   {state.difficulty}
                 </span>
                 {isOfflineMode && <span className="ml-2 flex items-center gap-1 text-[8px] font-black text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded-full"><WifiOff size={10} /> LOCAL ARCHIVE</span>}
@@ -678,8 +673,8 @@ const App: React.FC = () => {
               <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-0.5">Liquid Assets</div>
               <div className="text-xl font-mono font-black text-emerald-400 tracking-tighter">{formatFullCurrency(state.money)}</div>
             </div>
-            
-            <button onClick={() => setState(prev => ({...prev, isPaused: !prev.isPaused}))} className={`p-3 rounded-xl border transition-all ${state.isPaused ? 'bg-amber-500/20 text-amber-500 border-amber-500/30' : 'bg-white/5 text-slate-500 border-white/5'}`}>
+
+            <button onClick={() => setState(prev => ({ ...prev, isPaused: !prev.isPaused }))} className={`p-3 rounded-xl border transition-all ${state.isPaused ? 'bg-amber-500/20 text-amber-500 border-amber-500/30' : 'bg-white/5 text-slate-500 border-white/5'}`}>
               {state.isPaused ? <Play size={20} /> : <Pause size={20} />}
             </button>
             <button onClick={() => saveToCloud()} className="p-3 bg-white/5 border border-white/5 rounded-xl text-slate-500 hover:text-emerald-500 transition-all">
@@ -721,11 +716,11 @@ const App: React.FC = () => {
                   <h3 className="text-3xl font-black text-white italic tracking-tighter uppercase opacity-60">Mint Capital</h3>
                 </div>
               </div>
-              
+
               <div className="w-full max-w-lg glass-panel rounded-[2.5rem] p-8 border border-white/5 shadow-2xl text-center">
                 <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4">Click Evolution Level {state.clickLevel}</p>
                 <button onClick={upgradeClick} disabled={state.money < Math.floor(200 * Math.pow(1.8, state.clickLevel - 1)) || state.clickLevel >= 20 || state.isPaused} className="w-full py-5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-white/5 disabled:text-slate-700 text-white rounded-2xl font-black uppercase tracking-widest transition-all">
-                   Upgrade: {formatCurrency(Math.floor(200 * Math.pow(1.8, state.clickLevel - 1)))}
+                  Upgrade: {formatCurrency(Math.floor(200 * Math.pow(1.8, state.clickLevel - 1)))}
                 </button>
               </div>
             </div>
