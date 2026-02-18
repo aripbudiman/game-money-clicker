@@ -65,6 +65,12 @@ const App: React.FC = () => {
   };
 
   const [state, setState] = useState<PlayerState>(defaultState);
+  // Ref to always hold the latest state for the auto-save timer
+  const stateRef = useRef<PlayerState>(state);
+
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
 
   const loadProgress = async (username: string) => {
     setLoading(true);
@@ -72,7 +78,7 @@ const App: React.FC = () => {
       const response = await fetch(`${FB_URL}players/${username.toLowerCase()}.json`);
       const data = await response.json();
       if (data) {
-        setState({
+        const loadedState = {
           ...defaultState,
           ...data,
           username,
@@ -81,9 +87,13 @@ const App: React.FC = () => {
             return saved ? { ...a, owned: saved.owned || 0, avgBuyPrice: saved.avgBuyPrice || 0, history: saved.history || a.history, price: saved.price || a.price } : a;
           }),
           inventory: data.inventory || []
-        });
+        };
+        setState(loadedState);
+        stateRef.current = loadedState;
       } else {
-        setState({ ...defaultState, username });
+        const newState = { ...defaultState, username };
+        setState(newState);
+        stateRef.current = newState;
       }
       setActiveUser(username);
       localStorage.setItem(SESSION_KEY, username);
@@ -107,6 +117,7 @@ const App: React.FC = () => {
     setActiveUser(null);
     localStorage.removeItem(SESSION_KEY);
     setState(defaultState);
+    stateRef.current = defaultState;
     setSyncing(false);
   };
 
@@ -117,11 +128,13 @@ const App: React.FC = () => {
   }, []);
 
   const saveToCloud = async (overrideState?: PlayerState) => {
-    if (!activeUser) return;
+    const user = activeUser || stateRef.current.username;
+    if (!user) return;
+    
     setSyncing(true);
-    const stateToSave = overrideState || state;
+    const stateToSave = overrideState || stateRef.current;
     try {
-      await fetch(`${FB_URL}players/${activeUser.toLowerCase()}.json`, {
+      await fetch(`${FB_URL}players/${user.toLowerCase()}.json`, {
         method: 'PUT',
         body: JSON.stringify({ ...stateToSave, lastSave: Date.now() })
       });
@@ -132,6 +145,7 @@ const App: React.FC = () => {
     }
   };
 
+  // Synergy and Multiplier calculations
   const synergyBonus = useMemo(() => {
     let bonus = 1;
     const categories = new Set(state.ownedBusinesses.map(ob => INITIAL_BUSINESSES.find(b => b.id === ob.businessId)?.category));
@@ -179,8 +193,6 @@ const App: React.FC = () => {
   const calculateBusinessResale = (busId: string, level: number) => {
     const bus = INITIAL_BUSINESSES.find(b => b.id === busId);
     if (!bus) return 0;
-    // Base resale value: 70% of base price
-    // Plus 50% of the calculated spent upgrades
     let totalSpentOnUpgrades = 0;
     for (let i = 0; i < level; i++) {
       totalSpentOnUpgrades += calculateUpgradePrice(bus.basePrice, i);
@@ -228,6 +240,7 @@ const App: React.FC = () => {
     }).filter(i => i.count > 0 || activeTab === GameTab.INDUSTRIES);
   }, [state.ownedBusinesses, globalMultiplier, activeTab]);
 
+  // Income loop
   useEffect(() => {
     const interval = setInterval(() => {
       if (state.isPaused || !activeUser) return;
@@ -248,6 +261,7 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, [businessesIncome, maintenance, state.isPaused, activeUser]);
 
+  // Market loop
   useEffect(() => {
     const interval = setInterval(() => {
       if (state.isPaused || !activeUser) return;
@@ -264,13 +278,24 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, [state.isPaused, activeUser]);
 
+  // IMPROVED AUTO-SAVE: Triggers every 5 seconds without resetting on state change
   useEffect(() => {
-    if (!activeUser || loading) return;
+    if (!activeUser) return;
+    
     const interval = setInterval(() => {
       saveToCloud();
-    }, 30000);
-    return () => clearInterval(interval);
-  }, [state, loading, activeUser]);
+    }, 5000); // 5 seconds auto-save frequency
+
+    const handleBeforeUnload = () => {
+      saveToCloud();
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [activeUser]);
 
   const togglePause = () => {
     setState(prev => ({ ...prev, isPaused: !prev.isPaused }));
@@ -419,7 +444,6 @@ const App: React.FC = () => {
     setState(prev => ({ ...prev, money: prev.money + gain, totalEarned: prev.totalEarned + gain, xp: prev.xp + 0.1 }));
   };
 
-  // Login View
   if (!activeUser) {
     return (
       <div className="min-h-screen bg-[#050505] flex items-center justify-center p-6 relative overflow-hidden">
@@ -462,7 +486,7 @@ const App: React.FC = () => {
           </form>
 
           <div className="text-center">
-            <p className="text-[10px] font-black text-slate-600 uppercase tracking-widest">Progress is auto-synced to secure server</p>
+            <p className="text-[10px] font-black text-slate-600 uppercase tracking-widest">Progress is auto-synced every 5s</p>
           </div>
         </div>
       </div>
@@ -762,7 +786,7 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {/* INDUSTRIES TAB - THE SHOP FOR BUSINESSES */}
+        {/* INDUSTRIES TAB */}
         {activeTab === GameTab.INDUSTRIES && (
           <div className="space-y-12 animate-in slide-in-from-bottom duration-500">
              <div className="space-y-2">
